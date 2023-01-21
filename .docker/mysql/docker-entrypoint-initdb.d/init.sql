@@ -1,0 +1,3 @@
+CREATE DATABASE partywatcher_testing;
+GRANT ALL PRIVILEGES ON testing.* TO 'homestead'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
