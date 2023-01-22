@@ -54,11 +54,11 @@ class Guard
             $accessToken = $model::findToken($token);
 
             if (! $this->isValidAccessToken($accessToken) ||
-                ! $this->supportsTokens($accessToken->tokenable)) {
+                ! $this->supportsTokens($accessToken->authable)) {
                 return;
             }
 
-            $tokenable = $accessToken->tokenable->withAccessToken(
+            $authable = $accessToken->authable->withAccessToken(
                 $accessToken
             );
 
@@ -75,7 +75,7 @@ class Guard
                 $accessToken->forceFill(['last_used_at' => now()])->save();
             }
 
-            return $tokenable;
+            return $authable;
         }
     }
 
@@ -145,7 +145,7 @@ class Guard
         $isValid =
             (! $this->expiration || $accessToken->created_at->gt(now()->subMinutes($this->expiration)))
             && (! $accessToken->expires_at || ! $accessToken->expires_at->isPast())
-            && $this->hasValidProvider($accessToken->tokenable);
+            && $this->hasValidProvider($accessToken->authable);
 
         if (is_callable(HyrnaticAuthenticator::$accessTokenAuthenticationCallback)) {
             $isValid = (bool) (HyrnaticAuthenticator::$accessTokenAuthenticationCallback)($accessToken, $isValid);
@@ -155,12 +155,12 @@ class Guard
     }
 
     /**
-     * Determine if the tokenable model matches the provider's model type.
+     * Determine if the authable model matches the provider's model type.
      *
-     * @param  \Illuminate\Database\Eloquent\Model  $tokenable
+     * @param  \Illuminate\Database\Eloquent\Model  $authable
      * @return bool
      */
-    protected function hasValidProvider($tokenable)
+    protected function hasValidProvider($authable)
     {
         if (is_null($this->provider)) {
             return true;
@@ -168,6 +168,6 @@ class Guard
 
         $model = config("auth.providers.{$this->provider}.model");
 
-        return $tokenable instanceof $model;
+        return $authable instanceof $model;
     }
 }
