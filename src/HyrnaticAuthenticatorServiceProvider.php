@@ -4,26 +4,59 @@ namespace Hyrioo\HyrnaticAuthenticator;
 
 use Illuminate\Auth\RequestGuard;
 use Illuminate\Support\Facades\Auth;
-use Spatie\LaravelPackageTools\Package;
-use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Illuminate\Support\ServiceProvider;
 use Hyrioo\HyrnaticAuthenticator\Commands\GenerateSecretCommand;
 
-class HyrnaticAuthenticatorServiceProvider extends PackageServiceProvider
+class HyrnaticAuthenticatorServiceProvider extends ServiceProvider
 {
-    public function configurePackage(Package $package): void
+    /**
+     * Register any application services.
+     *
+     * @return void
+     */
+    public function register()
     {
-        /*
-         * This class is a Package Service Provider
-         *
-         * More info: https://github.com/spatie/laravel-package-tools
-         */
-        $package
-            ->name('hyrnatic-authenticator')
-            ->hasConfigFile()
-            ->hasMigrations('create_authenticator_table', 'create_permissions_table')
-            ->hasCommand(GenerateSecretCommand::class);
+        if (!app()->configurationIsCached()) {
+            $this->mergeConfigFrom(__DIR__ . '/../config/hyrnatic-authenticator.php', 'hyrnatic-authenticator');
+        }
+    }
+
+    /**
+     * Bootstrap any application services.
+     *
+     * @return void
+     */
+    public function boot()
+    {
+        if (app()->runningInConsole()) {
+            $this->registerMigrations();
+
+            $this->publishes([
+                __DIR__ . '/../database/migrations' => database_path('migrations'),
+            ], 'hyrnatic-authenticator-migrations');
+
+            $this->publishes([
+                __DIR__ . '/../config/hyrnatic-authenticator.php' => config_path('hyrnatic-authenticator.php'),
+            ], 'hyrnatic-authenticator-config');
+
+            $this->commands([
+                GenerateSecretCommand::class,
+            ]);
+        }
 
         $this->configureGuard();
+    }
+
+    /**
+     * Register Sanctum's migration files.
+     *
+     * @return void
+     */
+    protected function registerMigrations()
+    {
+        if (HyrnaticAuthenticator::shouldRunMigrations()) {
+            $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
+        }
     }
 
     protected function configureGuard()
@@ -42,8 +75,8 @@ class HyrnaticAuthenticatorServiceProvider extends PackageServiceProvider
     /**
      * Register the guard.
      *
-     * @param  \Illuminate\Contracts\Auth\Factory  $auth
-     * @param  array  $config
+     * @param \Illuminate\Contracts\Auth\Factory $auth
+     * @param array $config
      * @return RequestGuard
      */
     protected function createGuard($auth, $config)

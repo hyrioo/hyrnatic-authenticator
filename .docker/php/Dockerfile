@@ -12,6 +12,7 @@ RUN apt-get update \
     openssl \
     php8.1-common \
     php8.1-mysql \
+    php8.1-sqlite3 \
     php8.1-gd \
     php8.1-bcmath \
     php8.1-intl \

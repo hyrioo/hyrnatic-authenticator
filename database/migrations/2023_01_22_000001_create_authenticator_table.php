@@ -23,8 +23,10 @@ return new class extends Migration
         Schema::create('refresh_tokens', function (Blueprint $table) {
             $table->id();
             $table->morphs('authable');
-            $table->string('hash');
+            $table->string('token');
             $table->string('family')->index();
+            $table->integer('order');
+            $table->timestamp('expires_at')->nullable();
             $table->timestamps();
         });
     }

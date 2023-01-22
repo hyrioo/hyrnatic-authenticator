@@ -2,6 +2,8 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Contracts;
 
+use DateTimeInterface;
+
 interface HasApiTokens
 {
     /**
@@ -9,7 +11,14 @@ interface HasApiTokens
      *
      * @return \Illuminate\Database\Eloquent\Relations\MorphMany
      */
-    public function tokens();
+    public function accessTokens();
+
+    /**
+     * Get the refresh tokens that belong to model.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\MorphMany
+     */
+    public function refreshTokens();
 
     /**
      * Determine if the current API token has a given scope.
@@ -24,9 +33,9 @@ interface HasApiTokens
      *
      * @param  string  $name
      * @param  array  $abilities
-     * @return \Hyrioo\HyrnaticAuthenticator\NewAccessToken
+     * @return \Hyrioo\HyrnaticAuthenticator\NewToken
      */
-    public function createToken(string $name, array $abilities = ['*']);
+    public function createToken(string $name, array $abilities = ['*'], DateTimeInterface $expiresAt = null);
 
     /**
      * Get the access token currently associated with the user.

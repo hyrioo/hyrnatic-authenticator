@@ -18,6 +18,13 @@
     beStrictAboutOutputDuringTests="true"
     verbose="true"
 >
+    <php>
+        <env name="APP_KEY" value="base64:dDTVcFMnDkb5mKmky0tUDkmOHksPqvnu8WaQlMhLHBg=" />
+        <env name="DB_HOST" value="mysql"/>
+        <env name="DB_DATABASE" value="testing"/>
+        <env name="DB_USERNAME" value="homestead"/>
+        <env name="DB_PASSWORD" value="secret"/>
+    </php>
     <testsuites>
         <testsuite name="Hyrioo Test Suite">
             <directory>tests</directory>

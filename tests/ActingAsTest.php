@@ -14,16 +14,16 @@ class ActingAsTest extends \Orchestra\Testbench\TestCase
 
     protected function getEnvironmentSetUp($app)
     {
-        $app['config']->set('database.default', 'testbench');
-
-        $app['config']->set('database.connections.testbench', [
-            'driver'   => 'sqlite',
-            'database' => ':memory:',
-            'prefix'   => '',
-        ]);
+//        $app['config']->set('database.default', 'testbench');
+//
+//        $app['config']->set('database.connections.testbench', [
+//            'driver'   => 'sqlite',
+//            'database' => ':memory:',
+//            'prefix'   => '',
+//        ]);
     }
 
-    public function testActingAsWhenTheRouteIsProtectedByAuthMiddleware()
+    public function ActingAsWhenTheRouteIsProtectedByAuthMiddleware()
     {
         $this->withoutExceptionHandling();
 
@@ -44,4 +44,17 @@ class ActingAsTest extends \Orchestra\Testbench\TestCase
 class AuthUser extends User implements HasApiTokensContract
 {
     use HasApiTokens;
+
+    protected $table = 'users';
+
+    public static function createTestUser()
+    {
+        $user = new self();
+        $user->name = 'John Doe';
+        $user->email = 'user@example.com';
+        $user->password = 'password';
+        $user->save();
+
+        return $user;
+    }
 }

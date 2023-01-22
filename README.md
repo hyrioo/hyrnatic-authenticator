@@ -26,6 +26,10 @@ You can install the package via composer:
 composer require hyrioo/hyrnatic-authenticator
 ```
 
+```bash
+php artisan vendor:publish --provider="Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticatorServiceProvider"
+```
+
 You can publish and run the migrations with:
 
 ```bash

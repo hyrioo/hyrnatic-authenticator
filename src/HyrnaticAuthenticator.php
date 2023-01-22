@@ -14,6 +14,13 @@ class HyrnaticAuthenticator
     public static $personalAccessTokenModel = 'Hyrioo\\HyrnaticAuthenticator\\PersonalAccessToken';
 
     /**
+     * The personal refresh client model class name.
+     *
+     * @var string
+     */
+    public static $personalRefreshTokenModel = 'Hyrioo\\HyrnaticAuthenticator\\PersonalRefreshToken';
+
+    /**
      * A callback that can get the token from the request.
      *
      * @var callable|null
@@ -79,6 +86,17 @@ class HyrnaticAuthenticator
     }
 
     /**
+     * Set the personal refresh token model name.
+     *
+     * @param string $model
+     * @return void
+     */
+    public static function usePersonalRefreshTokenModel($model)
+    {
+        static::$personalRefreshTokenModel = $model;
+    }
+
+    /**
      * Specify a callback that should be used to fetch the access token from the request.
      *
      * @param callable $callback
@@ -123,12 +141,22 @@ class HyrnaticAuthenticator
     }
 
     /**
-     * Get the token model class name.
+     * Get the access token model class name.
      *
      * @return string
      */
     public static function personalAccessTokenModel()
     {
         return static::$personalAccessTokenModel;
+    }
+
+    /**
+     * Get the refresh token model class name.
+     *
+     * @return string
+     */
+    public static function personalRefreshTokenModel()
+    {
+        return static::$personalRefreshTokenModel;
     }
 }

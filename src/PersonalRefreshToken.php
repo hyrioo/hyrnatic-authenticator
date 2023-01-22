@@ -5,9 +5,9 @@ namespace Hyrioo\HyrnaticAuthenticator;
 use Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities;
 use Illuminate\Database\Eloquent\Model;
 
-class PersonalAccessToken extends Model implements HasAbilities
+class PersonalRefreshToken extends Model implements HasAbilities
 {
-    protected $table = 'auth_tokens';
+    protected $table = 'refresh_tokens';
 
     /**
      * The attributes that should be cast to native types.
@@ -58,7 +58,7 @@ class PersonalAccessToken extends Model implements HasAbilities
      * @param  string  $token
      * @return static|null
      */
-    public static function findToken(string $token)
+    public static function findToken($token)
     {
         if (strpos($token, '|') === false) {
             return static::where('token', hash('sha256', $token))->first();
@@ -69,17 +69,18 @@ class PersonalAccessToken extends Model implements HasAbilities
         if ($instance = static::find($id)) {
             return hash_equals($instance->token, hash('sha256', $token)) ? $instance : null;
         }
+
+        return null;
     }
 
-    /**
-     * Find the token instance matching the given family.
-     *
-     * @param  string  $family
-     * @return static|null
-     */
-    public static function findByFamily(string $family)
+    public function isMostRecent()
     {
-        return static::where('family', $family)->first();
+        return $this->order > static::where('family', $this->family)->whereNot('token', $this->token)->max('order');
+    }
+
+    public static function invalidateFamily(string $family)
+    {
+        static::where('family', $family)->delete();
     }
 
     /**
