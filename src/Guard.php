@@ -33,9 +33,9 @@ class Guard
     /**
      * Create a new guard instance.
      *
-     * @param  \Illuminate\Contracts\Auth\Factory  $auth
-     * @param  int  $expiration
-     * @param  string  $provider
+     * @param \Illuminate\Contracts\Auth\Factory $auth
+     * @param int $expiration
+     * @param string $provider
      * @return void
      */
     public function __construct(AuthFactory $auth, $expiration = null, $provider = null)
@@ -53,8 +53,8 @@ class Guard
 
             $accessToken = $model::findToken($token);
 
-            if (! $this->isValidAccessToken($accessToken) ||
-                ! $this->supportsTokens($accessToken->authable)) {
+            if (!$this->isValidAccessToken($accessToken) ||
+                !$this->supportsTokens($accessToken->authable)) {
                 return;
             }
 
@@ -82,7 +82,7 @@ class Guard
     /**
      * Determine if the authable model supports API tokens.
      *
-     * @param  mixed  $authable
+     * @param mixed $authable
      * @return bool
      */
     protected function supportsTokens($authable = null)
@@ -95,13 +95,13 @@ class Guard
     /**
      * Get the token from the request.
      *
-     * @param  \Illuminate\Http\Request  $request
+     * @param \Illuminate\Http\Request $request
      * @return string|null
      */
     protected function getTokenFromRequest(Request $request)
     {
         if (is_callable(HyrnaticAuthenticator::$accessTokenRetrievalCallback)) {
-            return (string) (HyrnaticAuthenticator::$accessTokenRetrievalCallback)($request);
+            return (string)(HyrnaticAuthenticator::$accessTokenRetrievalCallback)($request);
         }
 
         $token = $request->bearerToken();
@@ -112,43 +112,43 @@ class Guard
     /**
      * Determine if the bearer token is in the correct format.
      *
-     * @param  string|null  $token
+     * @param string|null $token
      * @return bool
      */
     protected function isValidBearerToken(string $token = null)
     {
-        if (! is_null($token) && str_contains($token, '|')) {
+        if (!is_null($token) && str_contains($token, '|')) {
             $model = new HyrnaticAuthenticator::$personalAccessTokenModel;
 
             if ($model->getKeyType() === 'int') {
                 [$id, $token] = explode('|', $token, 2);
 
-                return ctype_digit($id) && ! empty($token);
+                return ctype_digit($id) && !empty($token);
             }
         }
 
-        return ! empty($token);
+        return !empty($token);
     }
 
     /**
      * Determine if the provided access token is valid.
      *
-     * @param  mixed  $accessToken
+     * @param mixed $accessToken
      * @return bool
      */
     protected function isValidAccessToken($accessToken): bool
     {
-        if (! $accessToken) {
+        if (!$accessToken) {
             return false;
         }
 
         $isValid =
-            (! $this->expiration || $accessToken->created_at->gt(now()->subMinutes($this->expiration)))
-            && (! $accessToken->expires_at || ! $accessToken->expires_at->isPast())
+            (!$this->expiration || $accessToken->created_at->gt(now()->subMinutes($this->expiration)))
+            && (!$accessToken->expires_at || !$accessToken->expires_at->isPast())
             && $this->hasValidProvider($accessToken->authable);
 
         if (is_callable(HyrnaticAuthenticator::$accessTokenAuthenticationCallback)) {
-            $isValid = (bool) (HyrnaticAuthenticator::$accessTokenAuthenticationCallback)($accessToken, $isValid);
+            $isValid = (bool)(HyrnaticAuthenticator::$accessTokenAuthenticationCallback)($accessToken, $isValid);
         }
 
         return $isValid;
@@ -157,7 +157,7 @@ class Guard
     /**
      * Determine if the authable model matches the provider's model type.
      *
-     * @param  \Illuminate\Database\Eloquent\Model  $authable
+     * @param \Illuminate\Database\Eloquent\Model $authable
      * @return bool
      */
     protected function hasValidProvider($authable)

@@ -23,7 +23,7 @@ return new class extends Migration
         Schema::create('refresh_tokens', function (Blueprint $table) {
             $table->id();
             $table->morphs('authable');
-            $table->string('token');
+            $table->string('token')->unique();
             $table->string('family')->index();
             $table->integer('order');
             $table->timestamp('expires_at')->nullable();
