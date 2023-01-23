@@ -118,7 +118,7 @@ trait HasApiTokens
      * @throws TokenInvalidException
      * @throws TokenExpiredException
      */
-    public function refreshToken(string $jwtToken)
+    public static function refreshToken(string $jwtToken)
     {
         $parser = new Parser(new JoseEncoder());
         try {
@@ -141,8 +141,8 @@ trait HasApiTokens
         } else {
             $newSequence = $tokenFamily->last_refresh_sequence + 1;
 
-            $accessToken = $this->createAccessToken($family, $tokenFamily->scopes, now()->addMinutes(30)->toImmutable());
-            $refreshToken = $this->createRefreshToken($family, $newSequence, now()->addYear()->toImmutable());
+            $accessToken = $tokenFamily->authable->createAccessToken($family, $tokenFamily->scopes, now()->addMinutes(30)->toImmutable());
+            $refreshToken = $tokenFamily->authable->createRefreshToken($family, $newSequence, now()->addYear()->toImmutable());
 
             $tokenFamily->last_refresh_sequence = $newSequence;
             $tokenFamily->save();
