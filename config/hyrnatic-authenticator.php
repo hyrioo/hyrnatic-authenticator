@@ -8,12 +8,13 @@ return [
     |--------------------------------------------------------------------------
     |
     | This value controls the number of minutes until an issued token will be
-    | considered expired. If this value is null, personal access tokens do
-    | not expire. This won't tweak the lifetime of first-party sessions.
+    | considered expired. If this value is null, tokens do not expire.
     |
     */
 
-    'expiration' => null,
+    'secret' => env('JWT_SECRET'),
+
+    'access_expiration' => null,
 
     'refresh_expiration' => null,
 ];

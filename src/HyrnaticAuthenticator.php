@@ -21,6 +21,13 @@ class HyrnaticAuthenticator
     public static $personalRefreshTokenModel = 'Hyrioo\\HyrnaticAuthenticator\\PersonalRefreshToken';
 
     /**
+     * The personal refresh client model class name.
+     *
+     * @var string
+     */
+    public static $tokenFamilyModel = 'Hyrioo\\HyrnaticAuthenticator\\TokenFamily';
+
+    /**
      * A callback that can get the token from the request.
      *
      * @var callable|null
@@ -94,6 +101,17 @@ class HyrnaticAuthenticator
     public static function usePersonalRefreshTokenModel($model)
     {
         static::$personalRefreshTokenModel = $model;
+    }
+
+    /**
+     * Set the token family model name.
+     *
+     * @param string $model
+     * @return void
+     */
+    public static function useTokenFamilyModel($model)
+    {
+        static::$tokenFamilyModel = $model;
     }
 
     /**

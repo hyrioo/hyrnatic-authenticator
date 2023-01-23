@@ -3,8 +3,15 @@
 namespace Hyrioo\HyrnaticAuthenticator;
 
 use Hyrioo\HyrnaticAuthenticator\Events\TokenAuthenticated;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
+use Illuminate\Contracts\Auth\UserProvider;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
+use Lcobucci\JWT\Encoding\JoseEncoder;
+use Lcobucci\JWT\Token;
+use Lcobucci\JWT\Token\Parser;
 
 class Guard
 {
@@ -26,7 +33,7 @@ class Guard
     /**
      * The provider name.
      *
-     * @var string
+     * @var UserProvider
      */
     protected $provider;
 
@@ -35,10 +42,10 @@ class Guard
      *
      * @param \Illuminate\Contracts\Auth\Factory $auth
      * @param int $expiration
-     * @param string $provider
+     * @param UserProvider $provider
      * @return void
      */
-    public function __construct(AuthFactory $auth, $expiration = null, $provider = null)
+    public function __construct(AuthFactory $auth, $expiration = null, UserProvider $provider = null)
     {
         $this->auth = $auth;
         $this->expiration = $expiration;
@@ -47,32 +54,38 @@ class Guard
 
     public function __invoke(Request $request)
     {
-        if ($token = $this->getTokenFromRequest($request)) {
-            /** @var PersonalAccessToken $model */
-            $model = HyrnaticAuthenticator::$personalAccessTokenModel;
+        if ($accessToken = $this->getTokenFromRequest($request)) {
 
-            $accessToken = $model::findToken($token);
-
-            if (!$this->isValidAccessToken($accessToken) ||
-                !$this->supportsTokens($accessToken->authable)) {
-                return;
+            $parser = new Parser(new JoseEncoder());
+            try {
+                $parsedToken = $parser->parse($accessToken);
+            } catch (\Exception $e) {
+                throw new TokenInvalidException();
             }
 
-            $authable = $accessToken->authable->withAccessToken(
-                $accessToken
-            );
+            if($parsedToken->isExpired(now())) {
+                return false;
+            }
 
-            event(new TokenAuthenticated($accessToken));
+            $authable = $this->retrieveAuthable($parsedToken);
+            if (!$this->supportsTokens($authable)) {
+                return false;
+            }
 
-            if (method_exists($accessToken->getConnection(), 'hasModifiedRecords') &&
-                method_exists($accessToken->getConnection(), 'setRecordModificationState')) {
-                tap($accessToken->getConnection()->hasModifiedRecords(), function ($hasModifiedRecords) use ($accessToken) {
-                    $accessToken->forceFill(['last_used_at' => now()])->save();
+            $tokenFamily = $this->retrieveTokenFamily($parsedToken);
+            if(!$tokenFamily) {
+                return false;
+            }
 
-                    $accessToken->getConnection()->setRecordModificationState($hasModifiedRecords);
+            if (method_exists($tokenFamily->getConnection(), 'hasModifiedRecords') &&
+                method_exists($tokenFamily->getConnection(), 'setRecordModificationState')) {
+                tap($tokenFamily->getConnection()->hasModifiedRecords(), function ($hasModifiedRecords) use ($tokenFamily) {
+                    $tokenFamily->forceFill(['last_used_at' => now()])->save();
+
+                    $tokenFamily->getConnection()->setRecordModificationState($hasModifiedRecords);
                 });
             } else {
-                $accessToken->forceFill(['last_used_at' => now()])->save();
+                $tokenFamily->forceFill(['last_used_at' => now()])->save();
             }
 
             return $authable;
@@ -117,57 +130,44 @@ class Guard
      */
     protected function isValidBearerToken(string $token = null)
     {
-        if (!is_null($token) && str_contains($token, '|')) {
-            $model = new HyrnaticAuthenticator::$personalAccessTokenModel;
-
-            if ($model->getKeyType() === 'int') {
-                [$id, $token] = explode('|', $token, 2);
-
-                return ctype_digit($id) && !empty($token);
-            }
-        }
-
         return !empty($token);
     }
 
     /**
      * Determine if the provided access token is valid.
      *
-     * @param mixed $accessToken
+     * @param Token $token
      * @return bool
      */
-    protected function isValidAccessToken($accessToken): bool
+    protected function isValidAccessToken(Token $token): bool
     {
-        if (!$accessToken) {
-            return false;
-        }
-
-        $isValid =
-            (!$this->expiration || $accessToken->created_at->gt(now()->subMinutes($this->expiration)))
-            && (!$accessToken->expires_at || !$accessToken->expires_at->isPast())
-            && $this->hasValidProvider($accessToken->authable);
-
-        if (is_callable(HyrnaticAuthenticator::$accessTokenAuthenticationCallback)) {
-            $isValid = (bool)(HyrnaticAuthenticator::$accessTokenAuthenticationCallback)($accessToken, $isValid);
-        }
-
-        return $isValid;
+        return $token->isExpired(now());
     }
 
     /**
-     * Determine if the authable model matches the provider's model type.
+     * Determine if the provided access token is valid.
      *
-     * @param \Illuminate\Database\Eloquent\Model $authable
-     * @return bool
+     * @param Token $token
+     * @return \Illuminate\Contracts\Auth\Authenticatable
      */
-    protected function hasValidProvider($authable)
+    protected function retrieveAuthable(Token $token)
     {
-        if (is_null($this->provider)) {
-            return true;
-        }
+        $subject = $token->claims()->get('sub');
+        [$id] = explode('|', $subject, 2);
+        $authable = $this->provider->retrieveById($id);
 
-        $model = config("auth.providers.{$this->provider}.model");
+        return $authable;
+    }
 
-        return $authable instanceof $model;
+    /**
+     * Determine if the provided access token is valid.
+     *
+     * @param Token $token
+     * @return TokenFamily
+     */
+    protected function retrieveTokenFamily(Token $token)
+    {
+        $family = $token->claims()->get('fam');
+        return TokenFamily::findTokenFamily($family);
     }
 }

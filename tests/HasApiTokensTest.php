@@ -4,6 +4,8 @@ use Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens as HasApiTokensContract;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
 use Hyrioo\HyrnaticAuthenticator\HasApiTokens;
 use Illuminate\Foundation\Auth\User;
+use Lcobucci\JWT\Encoding\JoseEncoder;
+use Lcobucci\JWT\Token\Parser;
 use Orchestra\Testbench\TestCase;
 use function Orchestra\Testbench\artisan;
 
@@ -28,6 +30,9 @@ class HasApiTokensTest extends TestCase
 
     protected function getEnvironmentSetUp($app)
     {
+        $key = \Illuminate\Support\Str::random(32);
+        $app['config']->set('hyrnatic-authenticator.secret', $key);
+
         $app['config']->set('database.default', 'testbench');
 
         $app['config']->set('database.connections.testbench', [
@@ -40,42 +45,20 @@ class HasApiTokensTest extends TestCase
     public function test_tokens_can_be_created()
     {
         $user = AuthUser::createTestUser();
-        $accessExpire = \Carbon\Carbon::now();
-        $refreshExpire = \Carbon\Carbon::now();
+        $expire = \Carbon\Carbon::now();
 
-        $newToken = $user->createToken('test', ['foo'], $accessExpire, $refreshExpire);
+        $newToken = $user->createToken('test', ['foo'], $expire);
 
-        // Assert accessToken
-        [$id, $token] = explode('|', $newToken->plainTextAccessToken);
 
-        $this->assertEquals(
-            $newToken->accessToken->token,
-            hash('sha256', $token)
-        );
-        $this->assertEquals(
-            $newToken->accessToken->id,
-            $id
-        );
-        $this->assertEquals(
-            $accessExpire->toDateTimeString(),
-            $newToken->accessToken->expires_at->toDateTimeString(),
-        );
+        $parser = new Parser(new JoseEncoder());
+        $parsedAccessToken = $parser->parse($newToken->accessToken);
+        $parsedRefreshToken = $parser->parse($newToken->refreshToken);
+        $expectedSubject = $user->id.'|'.$user->getMorphClass();
 
-        // Assert refreshToken
-        [$id, $token] = explode('|', $newToken->plainTextRefreshToken);
+        $this->assertTrue($parsedAccessToken->isRelatedTo($expectedSubject));
+        $this->assertEquals($newToken->tokenFamily->family, $parsedAccessToken->claims()->get('fam'));
 
-        $this->assertEquals(
-            $newToken->refreshToken->token,
-            hash('sha256', $token)
-        );
-        $this->assertEquals(
-            $newToken->refreshToken->id,
-            $id
-        );
-        $this->assertEquals(
-            $refreshExpire->toDateTimeString(),
-            $newToken->refreshToken->expires_at->toDateTimeString(),
-        );
+        $this->assertEquals($newToken->tokenFamily->family, $parsedRefreshToken->claims()->get('fam'));
     }
 
     public function test_token_can_be_refreshed()
@@ -83,13 +66,15 @@ class HasApiTokensTest extends TestCase
         $user = AuthUser::createTestUser();
         $newToken = $user->createToken('test', ['foo']);
 
-        $refreshedToken = $user->refreshToken($newToken->plainTextRefreshToken);
+        $refreshedToken = $user->refreshToken($newToken->refreshToken);
 
-        [$id, $token] = explode('|', $refreshedToken->plainTextAccessToken);
-        $this->assertNotEquals(
-            $newToken->accessToken->token,
-            hash('sha256', $token)
-        );
+        $parser = new Parser(new JoseEncoder());
+        $parsedAccessToken = $parser->parse($newToken->accessToken);
+        $expectedSubject = $user->id.'|'.$user->getMorphClass();
+
+        $this->assertTrue($parsedAccessToken->isRelatedTo($expectedSubject));
+        $this->assertEquals($newToken->tokenFamily->family, $parsedAccessToken->claims()->get('fam'));
+        $this->assertEquals($refreshedToken->tokenFamily->family, $parsedAccessToken->claims()->get('fam'));
     }
 
     public function test_refresh_token_can_detect_reuse()
@@ -97,9 +82,28 @@ class HasApiTokensTest extends TestCase
         $user = AuthUser::createTestUser();
         $newToken = $user->createToken('test', ['foo']);
 
-        $refreshedToken = $user->refreshToken($newToken->plainTextRefreshToken);
+        $refreshedToken = $user->refreshToken($newToken->refreshToken);
 
         $this->expectException(RefreshTokenReuseException::class);
-        $refreshedToken2 = $user->refreshToken($newToken->plainTextRefreshToken);
+        $refreshedToken2 = $user->refreshToken($newToken->refreshToken);
+    }
+}
+
+class AuthUser extends User implements HasApiTokensContract
+{
+    use HasApiTokens;
+
+    protected $table = 'users';
+
+    public static function createTestUser()
+    {
+        $user = new self();
+        $user->id = 1;
+        $user->name = 'John Doe';
+        $user->email = 'user@example.com';
+        $user->password = 'password';
+        $user->save();
+
+        return $user;
     }
 }

@@ -7,49 +7,29 @@ use Illuminate\Contracts\Support\Jsonable;
 
 class NewToken implements Arrayable, Jsonable
 {
-    /**
-     * The access token instance.
-     *
-     * @var \Hyrioo\HyrnaticAuthenticator\PersonalAccessToken
-     */
-    public $accessToken;
+    public string $accessToken;
+
+    public string $refreshToken;
 
     /**
      * The refresh token instance.
      *
-     * @var \Hyrioo\HyrnaticAuthenticator\PersonalRefreshToken
+     * @var \Hyrioo\HyrnaticAuthenticator\TokenFamily
      */
-    public $refreshToken;
-
-    /**
-     * The plain text version of the token.
-     *
-     * @var string
-     */
-    public $plainTextAccessToken;
-
-    /**
-     * The plain text version of the token.
-     *
-     * @var string
-     */
-    public $plainTextRefreshToken;
+    public $tokenFamily;
 
     /**
      * Create a new access token result.
      *
-     * @param  \Hyrioo\HyrnaticAuthenticator\PersonalAccessToken  $accessToken
-     * @param  \Hyrioo\HyrnaticAuthenticator\PersonalRefreshToken  $refreshToken
-     * @param  string  $plainTextAccessToken
-     * @param  string  $plainTextRefreshToken
-     * @return void
+     * @param TokenFamily $tokenFamily
+     * @param string $accessToken
+     * @param string $refreshToken
      */
-    public function __construct(PersonalAccessToken $accessToken, PersonalRefreshToken $refreshToken, string $plainTextAccessToken, string $plainTextRefreshToken)
+    public function __construct(TokenFamily $tokenFamily, string $accessToken, string $refreshToken)
     {
         $this->accessToken = $accessToken;
         $this->refreshToken = $refreshToken;
-        $this->plainTextAccessToken = $plainTextAccessToken;
-        $this->plainTextRefreshToken = $plainTextRefreshToken;
+        $this->tokenFamily = $tokenFamily;
     }
 
     /**
@@ -60,10 +40,9 @@ class NewToken implements Arrayable, Jsonable
     public function toArray()
     {
         return [
+            'tokenFamily' => $this->tokenFamily,
             'accessToken' => $this->accessToken,
             'refreshToken' => $this->refreshToken,
-            'plainTextAccessToken' => $this->plainTextAccessToken,
-            'plainTextRefreshToken' => $this->plainTextRefreshToken,
         ];
     }
 

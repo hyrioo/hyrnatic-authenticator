@@ -8,32 +8,40 @@ return new class extends Migration
 {
     public function up()
     {
-        Schema::create('auth_tokens', function (Blueprint $table) {
+        Schema::create('token_families', function (Blueprint $table) {
             $table->id();
             $table->morphs('authable');
             $table->string('name')->nullable();
             $table->string('family')->index();
-            $table->string('token', 64)->unique();
-            $table->text('scopes')->nullable();
+            $table->text('scopes');
             $table->timestamp('last_used_at')->nullable();
+            $table->integer('last_refresh_sequence');
+            $table->timestamp('expires_at')->nullable();
+            $table->timestamps();
+        });
+
+        /*Schema::create('auth_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('family_id');
+            $table->string('token', 64)->unique();
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
         });
 
         Schema::create('refresh_tokens', function (Blueprint $table) {
             $table->id();
-            $table->morphs('authable');
-            $table->string('token')->unique();
-            $table->string('family')->index();
-            $table->integer('order');
+            $table->foreignId('family_id');
+            $table->string('token', 64)->unique();
+            $table->integer('sequence');
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
-        });
+        });*/
     }
 
     public function down()
     {
-        Schema::dropIfExists('auth_tokens');
-        Schema::dropIfExists('refresh_tokens');
+        /*Schema::dropIfExists('refresh_tokens');
+        Schema::dropIfExists('auth_tokens');*/
+        Schema::dropIfExists('token_family');
     }
 };

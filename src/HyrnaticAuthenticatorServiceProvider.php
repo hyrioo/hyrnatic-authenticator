@@ -77,14 +77,10 @@ class HyrnaticAuthenticatorServiceProvider extends ServiceProvider
      *
      * @param \Illuminate\Contracts\Auth\Factory $auth
      * @param array $config
-     * @return RequestGuard
+     * @return Guard
      */
     protected function createGuard($auth, $config)
     {
-        return new RequestGuard(
-            new Guard($auth, config('hyrnatic-authenticator.expiration'), $config['provider']),
-            request(),
-            $auth->createUserProvider($config['provider'] ?? null)
-        );
+        return new Guard($auth, config('hyrnatic-authenticator.expiration'), $auth->createUserProvider($config['provider'] ?? null));
     }
 }

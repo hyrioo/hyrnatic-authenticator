@@ -2,9 +2,22 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
+use DateTimeImmutable;
 use DateTimeInterface;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Illuminate\Support\Str;
+use Lcobucci\JWT\Encoding\CannotDecodeContent;
+use Lcobucci\JWT\Encoding\ChainedFormatter;
+use Lcobucci\JWT\Encoding\JoseEncoder;
+use Lcobucci\JWT\Signer\Hmac\Sha256;
+use Lcobucci\JWT\Signer\Key\InMemory;
+use Lcobucci\JWT\Token\Builder;
+use Lcobucci\JWT\Token\InvalidTokenStructure;
+use Lcobucci\JWT\Token\Parser;
+use Lcobucci\JWT\Token\UnsupportedHeaderFound;
 
 trait HasApiTokens
 {
@@ -20,25 +33,15 @@ trait HasApiTokens
      *
      * @return \Illuminate\Database\Eloquent\Relations\MorphMany
      */
-    public function accessTokens()
+    public function tokenFamilies()
     {
         return $this->morphMany(HyrnaticAuthenticator::$personalAccessTokenModel, 'authable');
     }
 
     /**
-     * Get the refresh tokens that belong to model.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\MorphMany
-     */
-    public function refreshTokens()
-    {
-        return $this->morphMany(HyrnaticAuthenticator::$personalRefreshTokenModel, 'authable');
-    }
-
-    /**
      * Determine if the current API token has a given scope.
      *
-     * @param  string  $scope
+     * @param string $scope
      * @return bool
      */
     public function tokenCan(string $scope)
@@ -49,72 +52,102 @@ trait HasApiTokens
     /**
      * Create a new personal access token for the user.
      *
-     * @param  string  $name
-     * @param  array  $abilities
-     * @param  \DateTimeInterface|null  $expiresAt
+     * @param string $name
+     * @param array $abilities
+     * @param \DateTimeInterface|null $expiresAt
      * @return \Hyrioo\HyrnaticAuthenticator\NewToken
      */
-    public function createToken(string $name = null, array $scopes = ['*'], DateTimeInterface $accessExpiresAt = null, DateTimeInterface $refreshExpiresAt = null)
+    public function createToken(string $name = null, array $scopes = ['*'], DateTimeInterface $expiresAt = null)
     {
-        $family = Str::random(40);
+        $family = Str::random(48);
 
-        [$accessToken, $plainTextAccessToken] = $this->createAccessToken($family, $name, $scopes, $accessExpiresAt);
-        [$refreshToken, $plainTextRefreshToken] = $this->createRefreshToken($family, 1, $refreshExpiresAt);
+        $tokenFamily = new TokenFamily();
+        $tokenFamily->name = $name;
+        $tokenFamily->family = $family;
+        $tokenFamily->scopes = $scopes;
+        $tokenFamily->expires_at = $expiresAt;
+        $tokenFamily->last_refresh_sequence = 1;
 
-        $this->accessTokens()->save($accessToken);
-        $this->refreshTokens()->save($refreshToken);
+        $accessToken = $this->createAccessToken($family, $scopes, now()->addMinutes(30)->toImmutable());
+        $refreshToken = $this->createRefreshToken($family, $tokenFamily->last_refresh_sequence, now()->addYear()->toImmutable());
 
-        return new NewToken($accessToken, $refreshToken, $accessToken->getKey().'|'.$plainTextAccessToken, $refreshToken->getKey().'|'.$plainTextRefreshToken);
+        $this->tokenFamilies()->save($tokenFamily);
+
+        return new NewToken($tokenFamily, $accessToken, $refreshToken);
     }
 
-    private function createAccessToken(string $family, string $name = null, array $scopes = ['*'], DateTimeInterface $expiresAt = null): array
+    private function createAccessToken(string $family, array $scopes = ['*'], DateTimeImmutable $expiresAt = null): string
     {
-        $plainTextAccessToken = Str::random(40);
+        $tokenBuilder = (new Builder(new JoseEncoder(), ChainedFormatter::default()));
+        $algorithm = new Sha256();
+        $signingKey = InMemory::plainText(config('hyrnatic-authenticator.secret'));
+        $now = now();
 
-        /** @var PersonalAccessToken $accessToken */
-        $accessToken = new HyrnaticAuthenticator::$personalAccessTokenModel();
-        $accessToken->name = $name;
-        $accessToken->family = $family;
-        $accessToken->token = hash('sha256', $plainTextAccessToken);
-        $accessToken->scopes = $scopes;
-        $accessToken->expires_at = $expiresAt;
+        $subject = $this->getKey().'|'.$this->getMorphClass();
+        $token = $tokenBuilder
+            ->issuedAt($now->toImmutable())
+            ->expiresAt($expiresAt)
+            ->relatedTo($subject)
+            ->withClaim('fam', $family)
+            ->withClaim('scp', $scopes)
+            ->getToken($algorithm, $signingKey);
 
-        return [$accessToken, $plainTextAccessToken];
+        return $token->toString();
     }
 
-    private function createRefreshToken(string $family, int $order, DateTimeInterface $expiresAt = null): array
+    private function createRefreshToken(string $family, int $sequence, DateTimeImmutable $expiresAt = null): string
     {
-        $plainTextRefreshToken = Str::random(40);
+        $tokenBuilder = (new Builder(new JoseEncoder(), ChainedFormatter::default()));
+        $algorithm = new Sha256();
+        $signingKey = InMemory::plainText(config('hyrnatic-authenticator.secret'));
+        $now = now();
 
-        /** @var PersonalRefreshToken $refreshToken */
-        $refreshToken = new HyrnaticAuthenticator::$personalRefreshTokenModel();
-        $refreshToken->family = $family;
-        $refreshToken->token = hash('sha256', $plainTextRefreshToken);
-        $refreshToken->order = $order;
-        $refreshToken->expires_at = $expiresAt;
+        $token = $tokenBuilder
+            ->issuedAt($now->toImmutable())
+            ->expiresAt($expiresAt)
+            ->withClaim('fam', $family)
+            ->withClaim('seq', $sequence)
+            ->getToken($algorithm, $signingKey);
 
-        return [$refreshToken, $plainTextRefreshToken];
+        return $token->toString();
     }
 
-    public function refreshToken(string $token, DateTimeInterface $accessExpiresAt = null, DateTimeInterface $refreshExpiresAt = null)
+    /**
+     * @throws FailedToDeleteTokenFamilyException
+     * @throws RefreshTokenReuseException
+     * @throws TokenInvalidException
+     * @throws TokenExpiredException
+     */
+    public function refreshToken(string $jwtToken)
     {
-        $refreshToken = PersonalRefreshToken::findToken($token);
+        $parser = new Parser(new JoseEncoder());
+        try {
+            $token = $parser->parse($jwtToken);
+        } catch (\Exception $e) {
+            throw new TokenInvalidException();
+        }
 
-        if(!$refreshToken->isMostRecent()) {
-            PersonalRefreshToken::invalidateFamily($refreshToken->family);
-            throw new RefreshTokenReuseException();
+        if($token->isExpired(now())) {
+            throw new TokenExpiredException();
+        }
+
+        $family = $token->claims()->get('fam');
+        $sequence = (int) $token->claims()->get('seq');
+
+        $tokenFamily = TokenFamily::findTokenFamily($family);
+
+        if (!$tokenFamily->isMostRecentRefresh($sequence)) {
+            $tokenFamily->invalidate();
         } else {
-            $accessToken = PersonalAccessToken::findByFamily($refreshToken->family);
+            $newSequence = $tokenFamily->last_refresh_sequence + 1;
 
-            $plainTextAccessToken = Str::random(40);
-            $accessToken->token = hash('sha256', $plainTextAccessToken);
-            $accessToken->expires_at = $accessExpiresAt;
-            $accessToken->save();
-            [$refreshToken, $plainTextRefreshToken] = $this->createRefreshToken($refreshToken->family, $refreshToken->order + 1, $refreshExpiresAt);
+            $accessToken = $this->createAccessToken($family, $tokenFamily->scopes, now()->addMinutes(30)->toImmutable());
+            $refreshToken = $this->createRefreshToken($family, $newSequence, now()->addYear()->toImmutable());
 
-            $this->refreshTokens()->save($refreshToken);
+            $tokenFamily->last_refresh_sequence = $newSequence;
+            $tokenFamily->save();
 
-            return new NewToken($accessToken, $refreshToken, $accessToken->getKey().'|'.$plainTextAccessToken, $refreshToken->getKey().'|'.$plainTextRefreshToken);
+            return new NewToken($tokenFamily, $accessToken, $refreshToken);
         }
     }
 
@@ -131,7 +164,7 @@ trait HasApiTokens
     /**
      * Set the current access token for the user.
      *
-     * @param  \Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities  $accessToken
+     * @param \Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities $accessToken
      * @return $this
      */
     public function withAccessToken($accessToken)

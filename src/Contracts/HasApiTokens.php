@@ -11,14 +11,8 @@ interface HasApiTokens
      *
      * @return \Illuminate\Database\Eloquent\Relations\MorphMany
      */
-    public function accessTokens();
+    public function tokenFamilies();
 
-    /**
-     * Get the refresh tokens that belong to model.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\MorphMany
-     */
-    public function refreshTokens();
 
     /**
      * Determine if the current API token has a given scope.
@@ -35,7 +29,7 @@ interface HasApiTokens
      * @param  array  $abilities
      * @return \Hyrioo\HyrnaticAuthenticator\NewToken
      */
-    public function createToken(string $name, array $abilities = ['*'], DateTimeInterface $expiresAt = null);
+    public function createToken(string $name = null, array $scopes = ['*'], DateTimeInterface $expiresAt = null);
 
     /**
      * Get the access token currently associated with the user.
