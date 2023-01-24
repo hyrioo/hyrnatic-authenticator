@@ -162,7 +162,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      */
     protected function isValidAccessToken(Token $token): bool
     {
-        return $token->isExpired(now());
+        return !$token->isExpired(now());
     }
 
     /**
