@@ -2,7 +2,6 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
-use Illuminate\Auth\RequestGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
 use Hyrioo\HyrnaticAuthenticator\Commands\GenerateSecretCommand;
@@ -80,6 +79,6 @@ class HyrnaticAuthenticatorServiceProvider extends ServiceProvider
      */
     protected function createGuard($auth, $config)
     {
-        return new Guard($auth, $config['provider'], config('hyrnatic-authenticator.expiration'), $auth->createUserProvider($config['provider'] ?? null));
+        return new Guard($auth, $config['provider'], $auth->createUserProvider($config['provider'] ?? null));
     }
 }
