@@ -79,6 +79,6 @@ class HyrnaticAuthenticatorServiceProvider extends ServiceProvider
      */
     protected function createGuard($auth, $config)
     {
-        return new Guard($auth, $config['provider'], $auth->createUserProvider($config['provider'] ?? null));
+        return new Guard($auth, request(), $config['provider'], $auth->createUserProvider($config['provider'] ?? null));
     }
 }

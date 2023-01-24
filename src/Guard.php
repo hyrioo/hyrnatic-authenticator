@@ -53,11 +53,12 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * @param UserProvider $provider
      * @return void
      */
-    public function __construct(AuthFactory $auth, string $providerName, UserProvider $provider = null)
+    public function __construct(AuthFactory $auth, Request $request, string $providerName, UserProvider $provider = null)
     {
         $this->auth = $auth;
         $this->provider = $provider;
         $this->providerName = $providerName;
+        $this->request = $request;
     }
 
     public function user()
