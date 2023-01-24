@@ -14,6 +14,8 @@ return [
 
     'secret' => env('JWT_SECRET'),
 
+    'family_expiration' => null,
+
     'access_expiration' => null,
 
     'refresh_expiration' => null,

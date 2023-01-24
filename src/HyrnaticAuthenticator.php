@@ -18,13 +18,6 @@ class HyrnaticAuthenticator
      *
      * @var string
      */
-    public static $personalRefreshTokenModel = 'Hyrioo\\HyrnaticAuthenticator\\PersonalRefreshToken';
-
-    /**
-     * The personal refresh client model class name.
-     *
-     * @var string
-     */
     public static $tokenFamilyModel = 'Hyrioo\\HyrnaticAuthenticator\\TokenFamily';
 
     /**

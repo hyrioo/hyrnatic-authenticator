@@ -95,6 +95,5 @@ class TokenFamily extends Model implements HasAbilities
         if(!$this->delete()) {
             throw new FailedToDeleteTokenFamilyException();
         }
-        throw new RefreshTokenReuseException();
     }
 }

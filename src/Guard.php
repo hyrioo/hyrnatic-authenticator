@@ -4,6 +4,7 @@ namespace Hyrioo\HyrnaticAuthenticator;
 
 use Hyrioo\HyrnaticAuthenticator\Events\TokenAuthenticated;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
+use Illuminate\Auth\GuardHelpers;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Auth\UserProvider;
 use Illuminate\Database\Eloquent\Model;
@@ -13,8 +14,9 @@ use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token;
 use Lcobucci\JWT\Token\Parser;
 
-class Guard
+class Guard implements \Illuminate\Contracts\Auth\Guard
 {
+    use GuardHelpers;
 
     /**
      * The authentication factory implementation.
@@ -24,18 +26,17 @@ class Guard
     protected $auth;
 
     /**
-     * The number of minutes tokens should be allowed to remain valid.
-     *
-     * @var int
-     */
-    protected $expiration;
-
-    /**
-     * The provider name.
+     * The provider instance.
      *
      * @var UserProvider
      */
     protected $provider;
+
+    /**
+     * The provider name.
+     * @var string
+     */
+    protected string $providerName;
 
     /**
      * Create a new guard instance.
@@ -45,14 +46,26 @@ class Guard
      * @param UserProvider $provider
      * @return void
      */
-    public function __construct(AuthFactory $auth, $expiration = null, UserProvider $provider = null)
+    public function __construct(AuthFactory $auth, string $providerName, UserProvider $provider = null)
     {
         $this->auth = $auth;
-        $this->expiration = $expiration;
         $this->provider = $provider;
+        $this->providerName = $providerName;
     }
 
-    public function __invoke(Request $request)
+    public function user()
+    {
+        // If we've already retrieved the user for the current request we can just
+        // return it back immediately. We do not want to fetch the user data on
+        // every call to this method because that would be tremendously slow.
+        if (! is_null($this->user)) {
+            return $this->user;
+        }
+
+        return $this->user = $this->retrieveUser(request());
+    }
+
+    public function retrieveUser(Request $request)
     {
         if ($accessToken = $this->getTokenFromRequest($request)) {
 
@@ -63,18 +76,18 @@ class Guard
                 throw new TokenInvalidException();
             }
 
-            if($parsedToken->isExpired(now())) {
-                return false;
+            if(!$this->isValidAccessToken($parsedToken)) {
+                return;
             }
 
             $authable = $this->retrieveAuthable($parsedToken);
             if (!$this->supportsTokens($authable)) {
-                return false;
+                return;
             }
 
             $tokenFamily = $this->retrieveTokenFamily($parsedToken);
             if(!$tokenFamily) {
-                return false;
+                return;
             }
 
             if (method_exists($tokenFamily->getConnection(), 'hasModifiedRecords') &&
@@ -145,6 +158,23 @@ class Guard
     }
 
     /**
+     * Determine if the authable model matches the provider's model type.
+     *
+     * @param  \Illuminate\Database\Eloquent\Model  $authable
+     * @return bool
+     */
+    protected function hasValidProvider($authable)
+    {
+        if (is_null($this->providerName)) {
+            return true;
+        }
+
+        $model = config("auth.providers.{$this->providerName}.model");
+
+        return $authable instanceof $model;
+    }
+
+    /**
      * Determine if the provided access token is valid.
      *
      * @param Token $token
@@ -156,7 +186,7 @@ class Guard
         [$id] = explode('|', $subject, 2);
         $authable = $this->provider->retrieveById($id);
 
-        return $authable;
+        return $this->hasValidProvider($authable) ? $authable : null;
     }
 
     /**
@@ -169,5 +199,47 @@ class Guard
     {
         $family = $token->claims()->get('fam');
         return TokenFamily::findTokenFamily($family);
+    }
+
+    /**
+     * Validate a user's credentials.
+     *
+     * @param  array  $credentials
+     * @return bool
+     */
+    public function validate(array $credentials = [])
+    {
+        return (bool) $this->provider->retrieveByCredentials($credentials);
+    }
+
+    public function logout()
+    {
+        $request = request();
+        if ($accessToken = $this->getTokenFromRequest($request)) {
+            $parser = new Parser(new JoseEncoder());
+            try {
+                $parsedToken = $parser->parse($accessToken);
+            } catch (\Exception $e) {
+                throw new TokenInvalidException();
+            }
+
+            if (!$this->isValidAccessToken($parsedToken)) {
+                return;
+            }
+
+            $authable = $this->retrieveAuthable($parsedToken);
+            if (!$this->supportsTokens($authable)) {
+                return;
+            }
+
+            $tokenFamily = $this->retrieveTokenFamily($parsedToken);
+            if (!$tokenFamily) {
+                return;
+            }
+
+            $tokenFamily->invalidate();
+        }
+
+        $this->user = null;
     }
 }

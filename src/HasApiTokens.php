@@ -2,6 +2,7 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
+use Carbon\CarbonInterface;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
@@ -18,6 +19,7 @@ use Lcobucci\JWT\Token\Builder;
 use Lcobucci\JWT\Token\InvalidTokenStructure;
 use Lcobucci\JWT\Token\Parser;
 use Lcobucci\JWT\Token\UnsupportedHeaderFound;
+use PHPUnit\Util\Exception;
 
 trait HasApiTokens
 {
@@ -57,7 +59,7 @@ trait HasApiTokens
      * @param \DateTimeInterface|null $expiresAt
      * @return \Hyrioo\HyrnaticAuthenticator\NewToken
      */
-    public function createToken(string $name = null, array $scopes = ['*'], DateTimeInterface $expiresAt = null)
+    public function createToken(string $name = null, array $scopes = ['*'], CarbonInterface $familyExpiresAt = null, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null)
     {
         $family = Str::random(48);
 
@@ -65,15 +67,37 @@ trait HasApiTokens
         $tokenFamily->name = $name;
         $tokenFamily->family = $family;
         $tokenFamily->scopes = $scopes;
-        $tokenFamily->expires_at = $expiresAt;
+        $tokenFamily->expires_at = self::getFamilyTokenExpiration($familyExpiresAt);
         $tokenFamily->last_refresh_sequence = 1;
 
-        $accessToken = $this->createAccessToken($family, $scopes, now()->addMinutes(30)->toImmutable());
-        $refreshToken = $this->createRefreshToken($family, $tokenFamily->last_refresh_sequence, now()->addYear()->toImmutable());
+        $accessToken = $this->createAccessToken($family, $scopes, self::getAccessTokenExpiration($accessExpiresAt));
+        $refreshToken = $this->createRefreshToken($family, $tokenFamily->last_refresh_sequence, self::getRefreshTokenExpiration($refreshExpiresAt));
 
         $this->tokenFamilies()->save($tokenFamily);
 
         return new NewToken($tokenFamily, $accessToken, $refreshToken);
+    }
+
+    protected static function getTokenExpiration(string $key, CarbonInterface $expiresAt = null): ?DateTimeImmutable
+    {
+        if($expiresAt) {
+            return $expiresAt->toDateTimeImmutable();
+        } else {
+            $minutes = config("hyrnatic-authenticator.{$key}_expiration");
+            return $minutes ? now()->addMinutes($minutes)->toImmutable() : null;
+        }
+    }
+    protected static function getFamilyTokenExpiration(CarbonInterface $expiresAt = null): ?DateTimeImmutable
+    {
+        return self::getTokenExpiration('family', $expiresAt);
+    }
+    protected static function getAccessTokenExpiration(CarbonInterface $expiresAt = null): ?DateTimeImmutable
+    {
+        return self::getTokenExpiration('access', $expiresAt);
+    }
+    protected static function getRefreshTokenExpiration(CarbonInterface $expiresAt = null): ?DateTimeImmutable
+    {
+        return self::getTokenExpiration('refresh', $expiresAt);
     }
 
     private function createAccessToken(string $family, array $scopes = ['*'], DateTimeImmutable $expiresAt = null): string
@@ -86,11 +110,14 @@ trait HasApiTokens
         $subject = $this->getKey().'|'.$this->getMorphClass();
         $token = $tokenBuilder
             ->issuedAt($now->toImmutable())
-            ->expiresAt($expiresAt)
             ->relatedTo($subject)
             ->withClaim('fam', $family)
-            ->withClaim('scp', $scopes)
-            ->getToken($algorithm, $signingKey);
+            ->withClaim('scp', $scopes);
+
+        if($expiresAt) {
+            $token->expiresAt($expiresAt);
+        }
+        $token = $token->getToken($algorithm, $signingKey);
 
         return $token->toString();
     }
@@ -104,10 +131,13 @@ trait HasApiTokens
 
         $token = $tokenBuilder
             ->issuedAt($now->toImmutable())
-            ->expiresAt($expiresAt)
             ->withClaim('fam', $family)
-            ->withClaim('seq', $sequence)
-            ->getToken($algorithm, $signingKey);
+            ->withClaim('seq', $sequence);
+
+        if($expiresAt) {
+            $token->expiresAt($expiresAt);
+        }
+        $token = $token->getToken($algorithm, $signingKey);
 
         return $token->toString();
     }
@@ -118,7 +148,7 @@ trait HasApiTokens
      * @throws TokenInvalidException
      * @throws TokenExpiredException
      */
-    public static function refreshToken(string $jwtToken)
+    public static function refreshToken(string $jwtToken, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null)
     {
         $parser = new Parser(new JoseEncoder());
         try {
@@ -138,11 +168,12 @@ trait HasApiTokens
 
         if (!$tokenFamily->isMostRecentRefresh($sequence)) {
             $tokenFamily->invalidate();
+            throw new RefreshTokenReuseException();
         } else {
             $newSequence = $tokenFamily->last_refresh_sequence + 1;
 
-            $accessToken = $tokenFamily->authable->createAccessToken($family, $tokenFamily->scopes, now()->addMinutes(30)->toImmutable());
-            $refreshToken = $tokenFamily->authable->createRefreshToken($family, $newSequence, now()->addYear()->toImmutable());
+            $accessToken = $tokenFamily->authable->createAccessToken($family, $tokenFamily->scopes, self::getAccessTokenExpiration($accessExpiresAt));
+            $refreshToken = $tokenFamily->authable->createRefreshToken($family, $newSequence, self::getRefreshTokenExpiration($refreshExpiresAt));
 
             $tokenFamily->last_refresh_sequence = $newSequence;
             $tokenFamily->save();

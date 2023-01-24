@@ -44,7 +44,7 @@ class GenerateSecretCommand extends Command
 
         $this->laravel['config']['hyrnatic-authenticator.secret'] = $key;
 
-        $this->info('JWT Secret set successfully.');
+        $this->components->info('JWT Secret set successfully.');
 
         return self::SUCCESS;
     }

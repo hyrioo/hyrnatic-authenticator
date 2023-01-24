@@ -2,6 +2,7 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Contracts;
 
+use Carbon\CarbonInterface;
 use DateTimeInterface;
 
 interface HasApiTokens
@@ -29,7 +30,7 @@ interface HasApiTokens
      * @param  array  $abilities
      * @return \Hyrioo\HyrnaticAuthenticator\NewToken
      */
-    public function createToken(string $name = null, array $scopes = ['*'], DateTimeInterface $expiresAt = null);
+    public function createToken(string $name = null, array $scopes = ['*'], CarbonInterface $familyExpiresAt = null, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null);
 
     /**
      * Get the access token currently associated with the user.
