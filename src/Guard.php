@@ -39,6 +39,13 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     protected string $providerName;
 
     /**
+     * The request instance.
+     *
+     * @var \Illuminate\Http\Request
+     */
+    protected $request;
+
+    /**
      * Create a new guard instance.
      *
      * @param \Illuminate\Contracts\Auth\Factory $auth
@@ -62,7 +69,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             return $this->user;
         }
 
-        return $this->user = $this->retrieveUser(request());
+        return $this->user = $this->retrieveUser($this->request);
     }
 
     public function retrieveUser(Request $request)
@@ -212,10 +219,22 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         return (bool) $this->provider->retrieveByCredentials($credentials);
     }
 
+    /**
+     * Set the current request instance.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return $this
+     */
+    public function setRequest(Request $request)
+    {
+        $this->request = $request;
+
+        return $this;
+    }
+
     public function logout()
     {
-        $request = request();
-        if ($accessToken = $this->getTokenFromRequest($request)) {
+        if ($accessToken = $this->getTokenFromRequest($this->request)) {
             $parser = new Parser(new JoseEncoder());
             try {
                 $parsedToken = $parser->parse($accessToken);
