@@ -2,7 +2,9 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Exceptions;
 
-class TokenExpiredException extends \Exception
+use Exception;
+
+class TokenExpiredException extends Exception
 {
 
 }

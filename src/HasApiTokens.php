@@ -4,38 +4,37 @@ namespace Hyrioo\HyrnaticAuthenticator;
 
 use Carbon\CarbonInterface;
 use DateTimeImmutable;
-use DateTimeInterface;
+use Exception;
+use Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Str;
-use Lcobucci\JWT\Encoding\CannotDecodeContent;
 use Lcobucci\JWT\Encoding\ChainedFormatter;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Signer\Hmac\Sha256;
 use Lcobucci\JWT\Signer\Key\InMemory;
+use Lcobucci\JWT\Token;
 use Lcobucci\JWT\Token\Builder;
-use Lcobucci\JWT\Token\InvalidTokenStructure;
 use Lcobucci\JWT\Token\Parser;
-use Lcobucci\JWT\Token\UnsupportedHeaderFound;
-use PHPUnit\Util\Exception;
 
 trait HasApiTokens
 {
     /**
      * The access token the user is using for the current request.
      *
-     * @var \Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities
+     * @var ?PersonalAccessToken
      */
-    protected $accessToken;
+    protected ?PersonalAccessToken $accessToken = null;
 
     /**
      * Get the access tokens that belong to model.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\MorphMany
+     * @return MorphMany
      */
-    public function tokenFamilies()
+    public function tokenFamilies(): MorphMany
     {
         return $this->morphMany(HyrnaticAuthenticator::$personalAccessTokenModel, 'authable');
     }
@@ -46,7 +45,7 @@ trait HasApiTokens
      * @param string $scope
      * @return bool
      */
-    public function tokenCan(string $scope)
+    public function tokenCan(string $scope): bool
     {
         return $this->accessToken && $this->accessToken->can($scope);
     }
@@ -54,12 +53,14 @@ trait HasApiTokens
     /**
      * Create a new personal access token for the user.
      *
-     * @param string $name
-     * @param array $abilities
-     * @param \DateTimeInterface|null $expiresAt
-     * @return \Hyrioo\HyrnaticAuthenticator\NewToken
+     * @param string|null $name
+     * @param array $scopes
+     * @param CarbonInterface|null $familyExpiresAt
+     * @param CarbonInterface|null $accessExpiresAt
+     * @param CarbonInterface|null $refreshExpiresAt
+     * @return NewToken
      */
-    public function createToken(string $name = null, array $scopes = ['*'], CarbonInterface $familyExpiresAt = null, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null)
+    public function createToken(string $name = null, array $scopes = ['*'], CarbonInterface $familyExpiresAt = null, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null): NewToken
     {
         $family = Str::random(48);
 
@@ -148,12 +149,12 @@ trait HasApiTokens
      * @throws TokenInvalidException
      * @throws TokenExpiredException
      */
-    public static function refreshToken(string $jwtToken, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null)
+    public static function refreshToken(string $jwtToken, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null): NewToken
     {
         $parser = new Parser(new JoseEncoder());
         try {
             $token = $parser->parse($jwtToken);
-        } catch (\Exception $e) {
+        } catch (Exception) {
             throw new TokenInvalidException();
         }
 
@@ -185,9 +186,9 @@ trait HasApiTokens
     /**
      * Get the access token currently associated with the user.
      *
-     * @return \Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities
+     * @return ?PersonalAccessToken
      */
-    public function currentAccessToken()
+    public function currentAccessToken(): ?PersonalAccessToken
     {
         return $this->accessToken;
     }
@@ -195,10 +196,10 @@ trait HasApiTokens
     /**
      * Set the current access token for the user.
      *
-     * @param \Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities $accessToken
+     * @param PersonalAccessToken $accessToken
      * @return $this
      */
-    public function withAccessToken($accessToken)
+    public function withAccessToken(PersonalAccessToken $accessToken): static
     {
         $this->accessToken = $accessToken;
 

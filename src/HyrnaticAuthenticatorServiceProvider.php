@@ -2,6 +2,7 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
+use Hyrioo\HyrnaticAuthenticator\Commands\PruneExpired;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
 use Hyrioo\HyrnaticAuthenticator\Commands\GenerateSecretCommand;
@@ -40,6 +41,7 @@ class HyrnaticAuthenticatorServiceProvider extends ServiceProvider
 
             $this->commands([
                 GenerateSecretCommand::class,
+                PruneExpired::class,
             ]);
         }
 

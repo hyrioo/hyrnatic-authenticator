@@ -2,7 +2,9 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Exceptions;
 
-class RefreshTokenReuseException extends \Exception
+use Exception;
+
+class RefreshTokenReuseException extends Exception
 {
 
 }

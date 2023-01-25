@@ -4,7 +4,6 @@ namespace Hyrioo\HyrnaticAuthenticator;
 
 use Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
-use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
 use Illuminate\Database\Eloquent\Model;
 
 class TokenFamily extends Model implements HasAbilities
@@ -65,10 +64,10 @@ class TokenFamily extends Model implements HasAbilities
     /**
      * Determine if the token has a given scope.
      *
-     * @param  string  $scope
+     * @param string $scope
      * @return bool
      */
-    public function can($scope)
+    public function can(string $scope)
     {
         return in_array('*', $this->scopes) ||
             array_key_exists($scope, array_flip($this->scopes));
@@ -77,10 +76,10 @@ class TokenFamily extends Model implements HasAbilities
     /**
      * Determine if the token is missing a given scope.
      *
-     * @param  string  $scope
+     * @param string $scope
      * @return bool
      */
-    public function cant($scope)
+    public function cant(string $scope)
     {
         return ! $this->can($scope);
     }

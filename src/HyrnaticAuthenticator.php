@@ -2,6 +2,7 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Mockery;
 
 class HyrnaticAuthenticator
@@ -11,14 +12,14 @@ class HyrnaticAuthenticator
      *
      * @var string
      */
-    public static $personalAccessTokenModel = 'Hyrioo\\HyrnaticAuthenticator\\PersonalAccessToken';
+    public static string $personalAccessTokenModel = 'Hyrioo\\HyrnaticAuthenticator\\PersonalAccessToken';
 
     /**
      * The personal refresh client model class name.
      *
      * @var string
      */
-    public static $tokenFamilyModel = 'Hyrioo\\HyrnaticAuthenticator\\TokenFamily';
+    public static string $tokenFamilyModel = 'Hyrioo\\HyrnaticAuthenticator\\TokenFamily';
 
     /**
      * A callback that can get the token from the request.
@@ -39,17 +40,17 @@ class HyrnaticAuthenticator
      *
      * @var bool
      */
-    public static $runsMigrations = true;
+    public static bool $runsMigrations = true;
 
     /**
      * Set the current user for the application with the given scopes.
      *
-     * @param \Illuminate\Contracts\Auth\Authenticatable|\Hyrioo\HyrnaticAuthenticator\HasApiTokens $user
+     * @param Authenticatable|HasApiTokens $user
      * @param array $scopes
      * @param string $guard
-     * @return \Illuminate\Contracts\Auth\Authenticatable
+     * @return Authenticatable
      */
-    public static function actingAs($user, $scopes = [], $guard = 'hyrnatic-authenticator')
+    public static function actingAs($user, array $scopes = [], string $guard = 'hyrnatic-authenticator')
     {
         $token = Mockery::mock(self::personalAccessTokenModel())->shouldIgnoreMissing(false);
 
@@ -80,20 +81,9 @@ class HyrnaticAuthenticator
      * @param string $model
      * @return void
      */
-    public static function usePersonalAccessTokenModel($model)
+    public static function usePersonalAccessTokenModel(string $model): void
     {
         static::$personalAccessTokenModel = $model;
-    }
-
-    /**
-     * Set the personal refresh token model name.
-     *
-     * @param string $model
-     * @return void
-     */
-    public static function usePersonalRefreshTokenModel($model)
-    {
-        static::$personalRefreshTokenModel = $model;
     }
 
     /**
@@ -102,7 +92,7 @@ class HyrnaticAuthenticator
      * @param string $model
      * @return void
      */
-    public static function useTokenFamilyModel($model)
+    public static function useTokenFamilyModel(string $model): void
     {
         static::$tokenFamilyModel = $model;
     }
@@ -113,7 +103,7 @@ class HyrnaticAuthenticator
      * @param callable $callback
      * @return void
      */
-    public static function getAccessTokenFromRequestUsing(callable $callback)
+    public static function getAccessTokenFromRequestUsing(callable $callback): void
     {
         static::$accessTokenRetrievalCallback = $callback;
     }
@@ -124,7 +114,7 @@ class HyrnaticAuthenticator
      * @param callable $callback
      * @return void
      */
-    public static function authenticateAccessTokensUsing(callable $callback)
+    public static function authenticateAccessTokensUsing(callable $callback): void
     {
         static::$accessTokenAuthenticationCallback = $callback;
     }
@@ -134,7 +124,7 @@ class HyrnaticAuthenticator
      *
      * @return bool
      */
-    public static function shouldRunMigrations()
+    public static function shouldRunMigrations(): bool
     {
         return static::$runsMigrations;
     }
@@ -144,7 +134,7 @@ class HyrnaticAuthenticator
      *
      * @return static
      */
-    public static function ignoreMigrations()
+    public static function ignoreMigrations(): static
     {
         static::$runsMigrations = false;
 
@@ -156,18 +146,8 @@ class HyrnaticAuthenticator
      *
      * @return string
      */
-    public static function personalAccessTokenModel()
+    public static function personalAccessTokenModel(): string
     {
         return static::$personalAccessTokenModel;
-    }
-
-    /**
-     * Get the refresh token model class name.
-     *
-     * @return string
-     */
-    public static function personalRefreshTokenModel()
-    {
-        return static::$personalRefreshTokenModel;
     }
 }

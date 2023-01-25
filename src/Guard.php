@@ -2,9 +2,10 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
-use Hyrioo\HyrnaticAuthenticator\Events\TokenAuthenticated;
+use Exception;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Illuminate\Auth\GuardHelpers;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Auth\UserProvider;
 use Illuminate\Database\Eloquent\Model;
@@ -21,7 +22,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * The authentication factory implementation.
      *
-     * @var \Illuminate\Contracts\Auth\Factory
+     * @var AuthFactory
      */
     protected $auth;
 
@@ -41,17 +42,17 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * The request instance.
      *
-     * @var \Illuminate\Http\Request
+     * @var Request
      */
-    protected $request;
+    protected Request $request;
 
     /**
      * Create a new guard instance.
      *
-     * @param \Illuminate\Contracts\Auth\Factory $auth
-     * @param int $expiration
-     * @param UserProvider $provider
-     * @return void
+     * @param AuthFactory $auth
+     * @param Request $request
+     * @param string $providerName
+     * @param UserProvider|null $provider
      */
     public function __construct(AuthFactory $auth, Request $request, string $providerName, UserProvider $provider = null)
     {
@@ -61,7 +62,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $this->request = $request;
     }
 
-    public function user()
+    public function user(): Contracts\HasApiTokens|Authenticatable|null
     {
         // If we've already retrieved the user for the current request we can just
         // return it back immediately. We do not want to fetch the user data on
@@ -80,7 +81,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             $parser = new Parser(new JoseEncoder());
             try {
                 $parsedToken = $parser->parse($accessToken);
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 throw new TokenInvalidException();
             }
 
@@ -88,6 +89,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
                 return;
             }
 
+            /** @var \Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable */
             $authable = $this->retrieveAuthable($parsedToken);
             if (!$this->supportsTokens($authable)) {
                 return;
@@ -97,6 +99,12 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             if(!$tokenFamily) {
                 return;
             }
+
+            $personalAccessToken = new HyrnaticAuthenticator::$personalAccessTokenModel($parsedToken);
+
+            $authable->withAccessToken(
+                $personalAccessToken
+            );
 
             if (method_exists($tokenFamily->getConnection(), 'hasModifiedRecords') &&
                 method_exists($tokenFamily->getConnection(), 'setRecordModificationState')) {
@@ -119,7 +127,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * @param mixed $authable
      * @return bool
      */
-    protected function supportsTokens($authable = null)
+    protected function supportsTokens($authable = null): bool
     {
         return $authable && in_array(HasApiTokens::class, class_uses_recursive(
                 get_class($authable)
@@ -129,10 +137,10 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * Get the token from the request.
      *
-     * @param \Illuminate\Http\Request $request
+     * @param Request $request
      * @return string|null
      */
-    protected function getTokenFromRequest(Request $request)
+    protected function getTokenFromRequest(Request $request): ?string
     {
         if (is_callable(HyrnaticAuthenticator::$accessTokenRetrievalCallback)) {
             return (string)(HyrnaticAuthenticator::$accessTokenRetrievalCallback)($request);
@@ -149,7 +157,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * @param string|null $token
      * @return bool
      */
-    protected function isValidBearerToken(string $token = null)
+    protected function isValidBearerToken(string $token = null): bool
     {
         return !empty($token);
     }
@@ -168,10 +176,10 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * Determine if the authable model matches the provider's model type.
      *
-     * @param  \Illuminate\Database\Eloquent\Model  $authable
+     * @param Model $authable
      * @return bool
      */
-    protected function hasValidProvider($authable)
+    protected function hasValidProvider($authable): bool
     {
         if (is_null($this->providerName)) {
             return true;
@@ -186,15 +194,19 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * Determine if the provided access token is valid.
      *
      * @param Token $token
-     * @return \Illuminate\Contracts\Auth\Authenticatable
+     * @return Authenticatable
      */
-    protected function retrieveAuthable(Token $token)
+    protected function retrieveAuthable(Token $token): ?Authenticatable
     {
         $subject = $token->claims()->get('sub');
-        [$id] = explode('|', $subject, 2);
+        [$id, $type] = explode('|', $subject, 2);
         $authable = $this->provider->retrieveById($id);
+        $class = Relation::getMorphedModel($type);
+        if(!$authable instanceof $class) {
+            return null;
+        }
 
-        return $this->hasValidProvider($authable) ? $authable : null;
+        return $this->hasValidProvider($authable, ) ? $authable : null;
     }
 
     /**
@@ -203,7 +215,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * @param Token $token
      * @return TokenFamily
      */
-    protected function retrieveTokenFamily(Token $token)
+    protected function retrieveTokenFamily(Token $token): TokenFamily
     {
         $family = $token->claims()->get('fam');
         return TokenFamily::findTokenFamily($family);
@@ -215,7 +227,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * @param  array  $credentials
      * @return bool
      */
-    public function validate(array $credentials = [])
+    public function validate(array $credentials = []): bool
     {
         return (bool) $this->provider->retrieveByCredentials($credentials);
     }
@@ -223,23 +235,29 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * Set the current request instance.
      *
-     * @param  \Illuminate\Http\Request  $request
+     * @param Request $request
      * @return $this
      */
-    public function setRequest(Request $request)
+    public function setRequest(Request $request): static
     {
         $this->request = $request;
 
         return $this;
     }
 
-    public function logout()
+    /**
+     * Logs out the user, and invalidate the family
+     * @return void
+     * @throws Exceptions\FailedToDeleteTokenFamilyException
+     * @throws TokenInvalidException
+     */
+    public function logout(): void
     {
         if ($accessToken = $this->getTokenFromRequest($this->request)) {
             $parser = new Parser(new JoseEncoder());
             try {
                 $parsedToken = $parser->parse($accessToken);
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 throw new TokenInvalidException();
             }
 

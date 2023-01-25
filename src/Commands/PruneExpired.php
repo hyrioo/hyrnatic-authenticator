@@ -3,6 +3,7 @@
 namespace Hyrioo\HyrnaticAuthenticator\Commands;
 
 use Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticator;
+use Hyrioo\HyrnaticAuthenticator\TokenFamily;
 use Illuminate\Console\Command;
 
 class PruneExpired extends Command
@@ -23,13 +24,14 @@ class PruneExpired extends Command
 
     public function handle(): int
     {
+        /** @var TokenFamily $model */
         $model = HyrnaticAuthenticator::$tokenFamilyModel;
 
         $hours = $this->option('hours');
 
         $this->components->task(
             'Pruning tokens with expired expires_at timestamps',
-            fn () => $model::where('expires_at', '<', now()->subHours($hours))->delete()
+            fn () => $model::query()->where('expires_at', '<', now()->subHours($hours))->delete()
         );
 
         $this->components->info("Tokens expired for more than [$hours hours] pruned successfully.");

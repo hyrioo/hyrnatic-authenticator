@@ -19,29 +19,10 @@ return new class extends Migration
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
         });
-
-        /*Schema::create('auth_tokens', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('family_id');
-            $table->string('token', 64)->unique();
-            $table->timestamp('expires_at')->nullable();
-            $table->timestamps();
-        });
-
-        Schema::create('refresh_tokens', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('family_id');
-            $table->string('token', 64)->unique();
-            $table->integer('sequence');
-            $table->timestamp('expires_at')->nullable();
-            $table->timestamps();
-        });*/
     }
 
     public function down()
     {
-        /*Schema::dropIfExists('refresh_tokens');
-        Schema::dropIfExists('auth_tokens');*/
         Schema::dropIfExists('token_family');
     }
 };

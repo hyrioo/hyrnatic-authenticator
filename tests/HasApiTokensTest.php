@@ -49,7 +49,6 @@ class HasApiTokensTest extends TestCase
 
         $newToken = $user->createToken('test', ['foo'], $expire);
 
-
         $parser = new Parser(new JoseEncoder());
         $parsedAccessToken = $parser->parse($newToken->accessToken);
         $parsedRefreshToken = $parser->parse($newToken->refreshToken);

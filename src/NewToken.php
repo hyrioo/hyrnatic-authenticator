@@ -14,9 +14,9 @@ class NewToken implements Arrayable, Jsonable
     /**
      * The refresh token instance.
      *
-     * @var \Hyrioo\HyrnaticAuthenticator\TokenFamily
+     * @var TokenFamily
      */
-    public $tokenFamily;
+    public TokenFamily $tokenFamily;
 
     /**
      * Create a new access token result.
@@ -37,7 +37,7 @@ class NewToken implements Arrayable, Jsonable
      *
      * @return array
      */
-    public function toArray()
+    public function toArray(): array
     {
         return [
             'tokenFamily' => $this->tokenFamily,
@@ -52,7 +52,7 @@ class NewToken implements Arrayable, Jsonable
      * @param  int  $options
      * @return string
      */
-    public function toJson($options = 0)
+    public function toJson($options = 0): string
     {
         return json_encode($this->toArray(), $options);
     }
