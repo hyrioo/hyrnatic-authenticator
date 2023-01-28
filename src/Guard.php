@@ -2,7 +2,10 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
+use Carbon\CarbonInterface;
 use Exception;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Illuminate\Auth\GuardHelpers;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -100,6 +103,10 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
                 return;
             }
 
+            if($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
+                throw new TokenExpiredException();
+            }
+
             $personalAccessToken = new HyrnaticAuthenticator::$personalAccessTokenModel($parsedToken);
 
             $authable->withAccessToken(
@@ -134,9 +141,39 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             ));
     }
 
-    public function create(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable): TokenBuilder
+    public function create(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable): NewTokenBuilder
     {
-        return new TokenBuilder($authable);
+        return new NewTokenBuilder($authable);
+    }
+
+    public function refresh(string $jwtToken): RefreshTokenBuilder
+    {
+        $parser = new Parser(new JoseEncoder());
+        try {
+            $token = $parser->parse($jwtToken);
+        } catch (Exception) {
+            throw new TokenInvalidException();
+        }
+
+        if($token->isExpired(now())) {
+            throw new TokenExpiredException();
+        }
+
+        $family = $token->claims()->get('fam');
+        $sequence = (int) $token->claims()->get('seq');
+
+        $tokenFamily = TokenFamily::findTokenFamily($family);
+
+        if (!$tokenFamily->isMostRecentRefresh($sequence)) {
+            $tokenFamily->invalidate();
+            throw new RefreshTokenReuseException();
+        } else if($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
+            throw new TokenExpiredException();
+        } else {
+            $authable = $tokenFamily->authable;
+            $builder = new RefreshTokenBuilder($authable, $tokenFamily);
+            return $builder;
+        }
     }
 
     /**
@@ -206,7 +243,8 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $subject = $token->claims()->get('sub');
         [$id, $type] = explode('|', $subject, 2);
         $authable = $this->provider->retrieveById($id);
-        $class = Relation::getMorphedModel($type);
+        $class = Relation::getMorphedModel($type) ?? $type;
+
         if(!$authable instanceof $class) {
             return null;
         }

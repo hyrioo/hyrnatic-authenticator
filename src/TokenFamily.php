@@ -6,6 +6,18 @@ use Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ *
+ * @property string|null $name
+ * @property string $family
+ * @property array $scopes
+ * @property array $access_claims
+ * @property array $refresh_claims
+ * @property int $last_refresh_sequence
+ * @property \Illuminate\Support\Carbon|null $last_used_at
+ * @property \Illuminate\Support\Carbon|null $expires_at
+ * @property \Illuminate\Support\Carbon|null $prune_at
+ */
 class TokenFamily extends Model implements HasAbilities
 {
     /**
@@ -15,8 +27,11 @@ class TokenFamily extends Model implements HasAbilities
      */
     protected $casts = [
         'scopes' => 'json',
+        'access_claims' => 'json',
+        'refresh_claims' => 'json',
         'last_used_at' => 'datetime',
         'expires_at' => 'datetime',
+        'prune_at' => 'datetime',
     ];
 
     /**
@@ -28,7 +43,11 @@ class TokenFamily extends Model implements HasAbilities
         'name',
         'family',
         'scopes',
+        'access_claims',
+        'refresh_claims',
+        'last_used_at',
         'expires_at',
+        'prune_at',
     ];
 
     /**

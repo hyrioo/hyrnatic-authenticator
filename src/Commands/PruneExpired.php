@@ -31,7 +31,7 @@ class PruneExpired extends Command
 
         $this->components->task(
             'Pruning tokens with expired expires_at timestamps',
-            fn () => $model::query()->where('expires_at', '<', now()->subHours($hours))->delete()
+            fn () => $model::query()->where('expires_at', '<', now()->subHours($hours))->orWhere('prune_at', '<', now()->subHours($hours))->delete()
         );
 
         $this->components->info("Tokens expired for more than [$hours hours] pruned successfully.");

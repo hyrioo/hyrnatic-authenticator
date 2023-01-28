@@ -11,45 +11,21 @@ use Lcobucci\JWT\Signer\Hmac\Sha256;
 use Lcobucci\JWT\Signer\Key\InMemory;
 use Lcobucci\JWT\Token\Builder;
 
-class TokenBuilder
+class TokenBuilderBase
 {
-    private Contracts\HasApiTokens $model;
+    protected Contracts\HasApiTokens $model;
 
-    private ?string $name = null;
+    protected array $scopes = ['*'];
 
-    private array $scopes = ['*'];
+    protected array $accessClaims = [];
+    protected array $refreshClaims = [];
 
-    private array $accessClaims = [];
-    private array $refreshClaims = [];
-
-    private ?CarbonInterface $familyExpiresAt = null;
-    private ?CarbonInterface $accessExpiresAt = null;
-    private ?CarbonInterface $refreshExpiresAt = null;
+    protected ?CarbonInterface $accessExpiresAt = null;
+    protected ?CarbonInterface $refreshExpiresAt = null;
 
     public function __construct(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $model)
     {
         $this->model = $model;
-    }
-
-    public function setName(string $name): static
-    {
-        $this->name = $name;
-
-        return $this;
-    }
-
-    public function setScopes(array $scopes): static
-    {
-        $this->scopes = $scopes;
-
-        return $this;
-    }
-
-    public function setFamilyExpiresAt(CarbonInterface $expiresAt): static
-    {
-        $this->familyExpiresAt = $expiresAt;
-
-        return $this;
     }
 
     public function setAccessExpiresAt(CarbonInterface $expiresAt): static
@@ -90,13 +66,12 @@ class TokenBuilder
         return self::getTokenExpiration('refresh', $expiresAt);
     }
 
-    private function createAccessToken(string $family): string
+    protected function createAccessToken(string $family, ?DateTimeImmutable $expiresAt): string
     {
         $tokenBuilder = (new Builder(new JoseEncoder(), ChainedFormatter::default()));
         $algorithm = new Sha256();
         $signingKey = InMemory::plainText(config('hyrnatic-authenticator.secret'));
         $now = now();
-        $expiresAt = self::getAccessTokenExpiration($this->accessExpiresAt);
 
         $subject = $this->model->getKey().'|'.$this->model->getMorphClass();
         $token = $tokenBuilder
@@ -117,13 +92,12 @@ class TokenBuilder
         return $token->toString();
     }
 
-    private function createRefreshToken(string $family, int $sequence): string
+    protected function createRefreshToken(string $family, int $sequence, ?DateTimeImmutable $expiresAt): string
     {
         $tokenBuilder = (new Builder(new JoseEncoder(), ChainedFormatter::default()));
         $algorithm = new Sha256();
         $signingKey = InMemory::plainText(config('hyrnatic-authenticator.secret'));
         $now = now();
-        $expiresAt = self::getRefreshTokenExpiration($this->refreshExpiresAt);
 
         $token = $tokenBuilder
             ->issuedAt($now->toImmutable())
@@ -140,24 +114,5 @@ class TokenBuilder
         $token = $token->getToken($algorithm, $signingKey);
 
         return $token->toString();
-    }
-
-    public function getToken(): NewToken
-    {
-        $family = Str::random(48);
-
-        $tokenFamily = new TokenFamily();
-        $tokenFamily->name = $this->name;
-        $tokenFamily->family = $family;
-        $tokenFamily->scopes = $this->scopes;
-        $tokenFamily->expires_at = self::getFamilyTokenExpiration($this->familyExpiresAt);
-        $tokenFamily->last_refresh_sequence = 1;
-
-        $accessToken = $this->createAccessToken($family);
-        $refreshToken = $this->createRefreshToken($family, $tokenFamily->last_refresh_sequence);
-
-        $this->model->tokenFamilies()->save($tokenFamily);
-
-        return new NewToken($tokenFamily, $accessToken, $refreshToken);
     }
 }

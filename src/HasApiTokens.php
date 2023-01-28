@@ -28,7 +28,7 @@ trait HasApiTokens
      */
     public function tokenFamilies(): MorphMany
     {
-        return $this->morphMany(HyrnaticAuthenticator::$personalAccessTokenModel, 'authable');
+        return $this->morphMany(HyrnaticAuthenticator::$tokenFamilyModel, 'authable');
     }
 
     /**

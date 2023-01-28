@@ -14,9 +14,12 @@ return new class extends Migration
             $table->string('name')->nullable();
             $table->string('family')->index();
             $table->text('scopes');
-            $table->timestamp('last_used_at')->nullable();
+            $table->text('access_claims');
+            $table->text('refresh_claims');
             $table->integer('last_refresh_sequence');
-            $table->timestamp('expires_at')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable()->index();
+            $table->timestamp('prune_at')->nullable()->index();
             $table->timestamps();
         });
     }

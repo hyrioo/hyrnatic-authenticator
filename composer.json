@@ -34,13 +34,13 @@
     },
     "autoload": {
         "psr-4": {
-            "Hyrioo\\HyrnaticAuthenticator\\": "src",
+            "Hyrioo\\HyrnaticAuthenticator\\": "src/",
             "Hyrioo\\HyrnaticAuthenticator\\Database\\Factories\\": "database/factories"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Hyrioo\\HyrnaticAuthenticator\\Tests\\": "tests"
+            "Hyrioo\\HyrnaticAuthenticator\\Tests\\": "tests/"
         }
     },
     "scripts": {
