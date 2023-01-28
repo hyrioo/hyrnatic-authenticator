@@ -98,7 +98,7 @@ trait HasApiTokens
      * @param PersonalAccessToken $accessToken
      * @return $this
      */
-    public function withAccessToken(PersonalAccessToken $accessToken): static
+    public function withAccessToken(PersonalAccessToken $accessToken): \Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens
     {
         $this->accessToken = $accessToken;
 

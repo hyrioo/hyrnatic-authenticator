@@ -36,9 +36,9 @@ interface HasApiTokens
     /**
      * Get the access token currently associated with the user.
      *
-     * @return PersonalAccessToken
+     * @return ?PersonalAccessToken
      */
-    public function currentAccessToken(): PersonalAccessToken;
+    public function currentAccessToken(): ?PersonalAccessToken;
 
     /**
      * Set the current access token for the user.
