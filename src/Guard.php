@@ -74,7 +74,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         return $this->user = $this->retrieveUser($this->request);
     }
 
-    public function retrieveUser(Request $request)
+    protected function retrieveUser(Request $request)
     {
         if ($accessToken = $this->getTokenFromRequest($request)) {
 
@@ -132,6 +132,11 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         return $authable && in_array(HasApiTokens::class, class_uses_recursive(
                 get_class($authable)
             ));
+    }
+
+    public function create(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable): TokenBuilder
+    {
+        return new TokenBuilder($authable);
     }
 
     /**
