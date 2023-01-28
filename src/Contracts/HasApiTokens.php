@@ -25,18 +25,6 @@ interface HasApiTokens
     public function tokenCan(string $scope): bool;
 
     /**
-     * Create a new tokens for the user.
-     *
-     * @param string|null $name
-     * @param array $scopes
-     * @param CarbonInterface|null $familyExpiresAt
-     * @param CarbonInterface|null $accessExpiresAt
-     * @param CarbonInterface|null $refreshExpiresAt
-     * @return NewToken
-     */
-    public function createToken(string $name = null, array $scopes = ['*'], CarbonInterface $familyExpiresAt = null, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null): NewToken;
-
-    /**
      * Refreshes the access token and rotates the refresh token
      * @param string $jwtToken
      * @param CarbonInterface|null $accessExpiresAt
