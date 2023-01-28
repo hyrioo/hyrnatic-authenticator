@@ -53,7 +53,7 @@ class TokenFamily extends Model implements HasAbilities
     /**
      * Find the token instance matching the given token.
      *
-     * @param  string  $token
+     * @param string $token
      * @return static|null
      */
     public static function findTokenFamily(string $family)
@@ -67,7 +67,7 @@ class TokenFamily extends Model implements HasAbilities
      * @param string $scope
      * @return bool
      */
-    public function can(string $scope)
+    public function can(string $scope): bool
     {
         return in_array('*', $this->scopes) ||
             array_key_exists($scope, array_flip($this->scopes));
@@ -79,9 +79,9 @@ class TokenFamily extends Model implements HasAbilities
      * @param string $scope
      * @return bool
      */
-    public function cant(string $scope)
+    public function cant(string $scope): bool
     {
-        return ! $this->can($scope);
+        return !$this->can($scope);
     }
 
     public function isMostRecentRefresh(int $sequence)
@@ -91,7 +91,7 @@ class TokenFamily extends Model implements HasAbilities
 
     public function invalidate()
     {
-        if(!$this->delete()) {
+        if (!$this->delete()) {
             throw new FailedToDeleteTokenFamilyException();
         }
     }
