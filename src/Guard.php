@@ -256,9 +256,9 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * Determine if the provided access token is valid.
      *
      * @param Token $token
-     * @return TokenFamily
+     * @return ?TokenFamily
      */
-    protected function retrieveTokenFamily(Token $token): TokenFamily
+    protected function retrieveTokenFamily(Token $token): ?TokenFamily
     {
         $family = $token->claims()->get('fam');
         return TokenFamily::findTokenFamily($family);
