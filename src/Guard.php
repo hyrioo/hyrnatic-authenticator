@@ -166,6 +166,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
 
         if (!$tokenFamily->isMostRecentRefresh($sequence)) {
             $tokenFamily->invalidate();
+            $this->user = null;
             throw new RefreshTokenReuseException();
         } else if($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
             throw new TokenExpiredException();

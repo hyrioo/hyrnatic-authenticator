@@ -2,13 +2,15 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Tests;
 
+use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Guard;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Parser;
-use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\Constraint\Exception as ExceptionConstraint;
 use function Orchestra\Testbench\artisan;
 
 class GuardTest extends TestCase
@@ -113,9 +115,9 @@ class GuardTest extends TestCase
 
         $requestGuard->setRequest($request);
 
-        $user = $requestGuard->user();
+        $requestUser = $requestGuard->user();
 
-        $this->assertNull($user);
+        $this->assertNull($requestUser);
     }
 
     public function test_authentication_fails_if_family_expired()
@@ -221,5 +223,34 @@ class GuardTest extends TestCase
         $this->expectException(TokenExpiredException::class);
         $requestGuard->refresh($token->refreshToken)->refreshToken();
     }
+
+    public function test_refresh_reuse_detection()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+
+        $token = $requestGuard->create($user)->getToken();
+
+        $request = Request::create('/', 'GET');
+        $request->headers->set('Authorization', 'Bearer '.$token->accessToken);
+
+        $requestGuard->setRequest($request);
+
+        $requestGuard->refresh($token->refreshToken)->refreshToken();
+
+        $this->assertException(RefreshTokenReuseException::class, fn() => $requestGuard->refresh($token->refreshToken)->refreshToken());
+        $this->assertException(ModelNotFoundException::class, fn() => $token->tokenFamily->refresh());
+
+        $requestUser = $requestGuard->user();
+        $this->assertNull($requestUser);
+    }
+
 
 }

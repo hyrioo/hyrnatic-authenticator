@@ -3,8 +3,10 @@
 namespace Hyrioo\HyrnaticAuthenticator\Tests;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticatorServiceProvider;
+use PHPUnit\Framework\Constraint\Exception as ExceptionConstraint;
 
 class TestCase extends Orchestra
 {
@@ -24,7 +26,7 @@ class TestCase extends Orchestra
         ];
     }
 
-    public function getEnvironmentSetUp($app)
+    protected function getEnvironmentSetUp($app)
     {
         config()->set('database.default', 'testing');
 
@@ -32,5 +34,14 @@ class TestCase extends Orchestra
         $migration = include __DIR__.'/../database/migrations/create_hyrnatic-authenticator_table.php.stub';
         $migration->up();
         */
+    }
+
+    public function assertException($exceptionClass, $callback)
+    {
+        try {
+            $callback();
+        }catch (\Exception $e){
+            $this->assertThat($e, new ExceptionConstraint($exceptionClass));
+        }
     }
 }
