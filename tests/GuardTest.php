@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Parser;
-use PHPUnit\Framework\Constraint\Exception as ExceptionConstraint;
 use function Orchestra\Testbench\artisan;
 
 class GuardTest extends TestCase
@@ -106,9 +105,11 @@ class GuardTest extends TestCase
         $requestGuard = $factory->guard('api');
 
         $user = AuthUser::createTestUser();
-        $expire = \Carbon\Carbon::now()->subSecond();
+        $expire = \Carbon\Carbon::now()->addMinute();
 
         $newToken = $requestGuard->create($user)->setAccessExpiresAt($expire)->getToken();
+
+        $this->travel(5)->minutes();
 
         $request = Request::create('/', 'GET');
         $request->headers->set('Authorization', 'Bearer '.$newToken->accessToken);
@@ -116,7 +117,6 @@ class GuardTest extends TestCase
         $requestGuard->setRequest($request);
 
         $requestUser = $requestGuard->user();
-
         $this->assertNull($requestUser);
     }
 
@@ -131,19 +131,18 @@ class GuardTest extends TestCase
         $requestGuard = $factory->guard('api');
 
         $user = AuthUser::createTestUser();
-        $expire = \Carbon\Carbon::now()->subSecond();
+        $expire = \Carbon\Carbon::now()->addMinute();
 
         $newToken = $requestGuard->create($user)->setFamilyExpiresAt($expire)->getToken();
+
+        $this->travel(5)->minutes();
 
         $request = Request::create('/', 'GET');
         $request->headers->set('Authorization', 'Bearer '.$newToken->accessToken);
 
         $requestGuard->setRequest($request);
 
-        $this->expectException(TokenExpiredException::class);
-        $user = $requestGuard->user();
-
-        $this->assertNull($user);
+        $this->assertException(TokenExpiredException::class, fn() => $requestGuard->user());
     }
 
     public function test_token_can_be_refreshed()
@@ -187,17 +186,18 @@ class GuardTest extends TestCase
         $requestGuard = $factory->guard('api');
 
         $user = AuthUser::createTestUser();
-        $expire = \Carbon\Carbon::now()->subSecond();
+        $expire = \Carbon\Carbon::now()->addMinute();
 
         $token = $requestGuard->create($user)->setRefreshExpiresAt($expire)->getToken();
+
+        $this->travel(5)->minutes();
 
         $request = Request::create('/', 'GET');
         $request->headers->set('Authorization', 'Bearer '.$token->accessToken);
 
         $requestGuard->setRequest($request);
 
-        $this->expectException(TokenExpiredException::class);
-        $requestGuard->refresh($token->refreshToken)->refreshToken();
+        $this->assertException(TokenExpiredException::class, fn() => $requestGuard->refresh($token->refreshToken)->refreshToken());
     }
 
     public function test_refresh_fails_if_family_expired()
@@ -211,17 +211,18 @@ class GuardTest extends TestCase
         $requestGuard = $factory->guard('api');
 
         $user = AuthUser::createTestUser();
-        $expire = \Carbon\Carbon::now()->subSecond();
+        $expire = \Carbon\Carbon::now()->addMinute();
 
         $token = $requestGuard->create($user)->setFamilyExpiresAt($expire)->getToken();
+
+        $this->travel(5)->minutes();
 
         $request = Request::create('/', 'GET');
         $request->headers->set('Authorization', 'Bearer '.$token->accessToken);
 
         $requestGuard->setRequest($request);
 
-        $this->expectException(TokenExpiredException::class);
-        $requestGuard->refresh($token->refreshToken)->refreshToken();
+        $this->assertException(TokenExpiredException::class, fn() => $requestGuard->refresh($token->refreshToken)->refreshToken());
     }
 
     public function test_refresh_reuse_detection()
