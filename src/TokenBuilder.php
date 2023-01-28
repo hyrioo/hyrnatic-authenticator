@@ -15,16 +15,16 @@ class TokenBuilder
 {
     private Contracts\HasApiTokens $model;
 
-    private string $name;
+    private ?string $name = null;
 
     private array $scopes = ['*'];
 
     private array $accessClaims = [];
     private array $refreshClaims = [];
 
-    private CarbonInterface $familyExpiresAt;
-    private CarbonInterface $accessExpiresAt;
-    private CarbonInterface $refreshExpiresAt;
+    private ?CarbonInterface $familyExpiresAt = null;
+    private ?CarbonInterface $accessExpiresAt = null;
+    private ?CarbonInterface $refreshExpiresAt = null;
 
     public function __construct(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $model)
     {
