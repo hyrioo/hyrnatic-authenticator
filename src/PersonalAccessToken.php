@@ -7,13 +7,15 @@ use Lcobucci\JWT\Token;
 
 class PersonalAccessToken implements HasAbilities
 {
-    protected Token $accessToken;
+    public Token $accessToken;
+    public TokenFamily $tokenFamily;
 
     protected array $scopes;
 
-    public function __construct(Token $accessToken)
+    public function __construct(Token $accessToken, TokenFamily $tokenFamily)
     {
         $this->accessToken = $accessToken;
+        $this->tokenFamily = $tokenFamily;
         $this->scopes = $this->accessToken->claims()->get('scp');
     }
 

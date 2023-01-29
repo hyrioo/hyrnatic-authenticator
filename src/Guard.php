@@ -40,18 +40,20 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
 
     /**
      * The provider name.
-     * @var string
      */
     protected string $providerName;
 
     /**
      * The request instance.
-     *
-     * @var Request
      */
     protected Request $request;
 
     private JWT $jwt;
+
+    /**
+     * The current token.
+     */
+    protected ?PersonalAccessToken $token;
 
     /**
      * Create a new guard instance.
@@ -76,7 +78,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         // If we've already retrieved the user for the current request we can just
         // return it back immediately. We do not want to fetch the user data on
         // every call to this method because that would be tremendously slow.
-        if (! is_null($this->user)) {
+        if (!is_null($this->user)) {
             return $this->user;
         }
 
@@ -91,46 +93,70 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * @throws TokenInvalidException
      * @throws TokenExpiredException
      */
+    public function token(): PersonalAccessToken|null
+    {
+        if (!is_null($this->token)) {
+            return $this->token;
+        }
+
+        return $this->token = $this->retrieveToken($this->request);
+    }
+
+    /**
+     * @throws TokenInvalidException
+     * @throws TokenExpiredException
+     */
     public function retrieveUser(Request $request)
     {
-        if ($accessToken = $this->getTokenFromRequest($request)) {
+        $personalAccessToken = $this->retrieveToken($request);
 
+        /** @var \Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable */
+        $authable = $this->retrieveAuthable($personalAccessToken->accessToken);
+        if (!$this->supportsTokens($authable)) {
+            return;
+        }
+
+        $authable->withAccessToken(
+            $personalAccessToken
+        );
+
+        $tokenFamily = $personalAccessToken->tokenFamily;
+
+        if (method_exists($tokenFamily->getConnection(), 'hasModifiedRecords') &&
+            method_exists($tokenFamily->getConnection(), 'setRecordModificationState')) {
+            tap($tokenFamily->getConnection()->hasModifiedRecords(), function ($hasModifiedRecords) use ($tokenFamily) {
+                $tokenFamily->forceFill(['last_used_at' => now()])->save();
+
+                $tokenFamily->getConnection()->setRecordModificationState($hasModifiedRecords);
+            });
+        } else {
+            $tokenFamily->forceFill(['last_used_at' => now()])->save();
+        }
+
+        return $authable;
+    }
+
+    /**
+     * @throws TokenInvalidException
+     * @throws TokenExpiredException
+     */
+    public function retrieveToken(Request $request): PersonalAccessToken|null
+    {
+        if ($accessToken = $this->getTokenFromRequest($request)) {
             $parsedToken = $this->jwt->decode($accessToken);
 
-            /** @var \Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable */
-            $authable = $this->retrieveAuthable($parsedToken);
-            if (!$this->supportsTokens($authable)) {
-                return;
-            }
-
             $tokenFamily = $this->retrieveTokenFamily($parsedToken);
-            if(!$tokenFamily) {
-                return;
+            if (!$tokenFamily) {
+                throw new TokenInvalidException();
             }
 
-            if($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
+            if ($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
                 throw new TokenExpiredException();
             }
 
-            $personalAccessToken = new HyrnaticAuthenticator::$personalAccessTokenModel($parsedToken);
-
-            $authable->withAccessToken(
-                $personalAccessToken
-            );
-
-            if (method_exists($tokenFamily->getConnection(), 'hasModifiedRecords') &&
-                method_exists($tokenFamily->getConnection(), 'setRecordModificationState')) {
-                tap($tokenFamily->getConnection()->hasModifiedRecords(), function ($hasModifiedRecords) use ($tokenFamily) {
-                    $tokenFamily->forceFill(['last_used_at' => now()])->save();
-
-                    $tokenFamily->getConnection()->setRecordModificationState($hasModifiedRecords);
-                });
-            } else {
-                $tokenFamily->forceFill(['last_used_at' => now()])->save();
-            }
-
-            return $authable;
+            return new HyrnaticAuthenticator::$personalAccessTokenModel($parsedToken, $tokenFamily);
         }
+        return null;
     }
 
     /**
@@ -156,7 +182,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $token = $this->jwt->decode($jwtToken);
 
         $family = $token->claims()->get('fam');
-        $sequence = (int) $token->claims()->get('seq');
+        $sequence = (int)$token->claims()->get('seq');
 
         $tokenFamily = TokenFamily::findTokenFamily($family);
 
@@ -164,7 +190,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             $tokenFamily->revoke();
             $this->user = null;
             throw new RefreshTokenReuseException();
-        } else if($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
+        } else if ($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
             throw new TokenExpiredException();
         } else {
             $authable = $tokenFamily->authable;
@@ -242,11 +268,11 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $authable = $this->provider->retrieveById($id);
         $class = Relation::getMorphedModel($type) ?? $type;
 
-        if(!$authable instanceof $class) {
+        if (!$authable instanceof $class) {
             return null;
         }
 
-        return $this->hasValidProvider($authable, ) ? $authable : null;
+        return $this->hasValidProvider($authable,) ? $authable : null;
     }
 
     /**
@@ -264,12 +290,12 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * Validate a user's credentials.
      *
-     * @param  array  $credentials
+     * @param array $credentials
      * @return bool
      */
     public function validate(array $credentials = []): bool
     {
-        return (bool) $this->provider->retrieveByCredentials($credentials);
+        return (bool)$this->provider->retrieveByCredentials($credentials);
     }
 
     /**
