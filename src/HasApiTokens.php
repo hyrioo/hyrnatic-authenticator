@@ -43,46 +43,6 @@ trait HasApiTokens
     }
 
     /**
-     * @throws FailedToDeleteTokenFamilyException
-     * @throws RefreshTokenReuseException
-     * @throws TokenInvalidException
-     * @throws TokenExpiredException
-     */
-    public static function refreshToken(string $jwtToken, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null): NewToken
-    {
-        $parser = new Parser(new JoseEncoder());
-        try {
-            $token = $parser->parse($jwtToken);
-        } catch (Exception) {
-            throw new TokenInvalidException();
-        }
-
-        if($token->isExpired(now())) {
-            throw new TokenExpiredException();
-        }
-
-        $family = $token->claims()->get('fam');
-        $sequence = (int) $token->claims()->get('seq');
-
-        $tokenFamily = TokenFamily::findTokenFamily($family);
-
-        if (!$tokenFamily->isMostRecentRefresh($sequence)) {
-            $tokenFamily->invalidate();
-            throw new RefreshTokenReuseException();
-        } else {
-            $newSequence = $tokenFamily->last_refresh_sequence + 1;
-
-            $accessToken = $tokenFamily->authable->createAccessToken($family, $tokenFamily->scopes, self::getAccessTokenExpiration($accessExpiresAt));
-            $refreshToken = $tokenFamily->authable->createRefreshToken($family, $newSequence, self::getRefreshTokenExpiration($refreshExpiresAt));
-
-            $tokenFamily->last_refresh_sequence = $newSequence;
-            $tokenFamily->save();
-
-            return new NewToken($tokenFamily, $accessToken, $refreshToken);
-        }
-    }
-
-    /**
      * Get the access token currently associated with the user.
      *
      * @return ?PersonalAccessToken

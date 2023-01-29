@@ -2,8 +2,6 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Contracts;
 
-use Carbon\CarbonInterface;
-use Hyrioo\HyrnaticAuthenticator\NewToken;
 use Hyrioo\HyrnaticAuthenticator\PersonalAccessToken;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
@@ -23,15 +21,6 @@ interface HasApiTokens
      * @return bool
      */
     public function tokenCan(string $scope): bool;
-
-    /**
-     * Refreshes the access token and rotates the refresh token
-     * @param string $jwtToken
-     * @param CarbonInterface|null $accessExpiresAt
-     * @param CarbonInterface|null $refreshExpiresAt
-     * @return NewToken
-     */
-    public static function refreshToken(string $jwtToken, CarbonInterface $accessExpiresAt = null, CarbonInterface $refreshExpiresAt = null): NewToken;
 
     /**
      * Get the access token currently associated with the user.

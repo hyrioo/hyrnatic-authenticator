@@ -165,7 +165,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $tokenFamily = TokenFamily::findTokenFamily($family);
 
         if (!$tokenFamily->isMostRecentRefresh($sequence)) {
-            $tokenFamily->invalidate();
+            $tokenFamily->revoke();
             $this->user = null;
             throw new RefreshTokenReuseException();
         } else if($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
@@ -290,7 +290,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     }
 
     /**
-     * Logs out the user, and invalidate the family
+     * Logs out the user, and revokes the family
      * @return void
      * @throws Exceptions\FailedToDeleteTokenFamilyException
      * @throws TokenInvalidException
@@ -319,7 +319,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
                 return;
             }
 
-            $tokenFamily->invalidate();
+            $tokenFamily->revoke();
         }
 
         $this->user = null;

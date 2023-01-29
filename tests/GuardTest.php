@@ -5,6 +5,7 @@ namespace Hyrioo\HyrnaticAuthenticator\Tests;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Guard;
+use Hyrioo\HyrnaticAuthenticator\Tests\Models\AuthUser;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -253,5 +254,52 @@ class GuardTest extends TestCase
         $this->assertNull($requestUser);
     }
 
+    public function test_tokens_has_custom_claims()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+
+        $token = $requestGuard->create($user)->setAccessClaims(['foo' => 1])->setRefreshClaims(['bar' => 2])->getToken();
+
+        $parser = new Parser(new JoseEncoder());
+        $parsedAccessToken = $parser->parse($token->accessToken);
+        $parsedRefreshToken = $parser->parse($token->refreshToken);
+
+        $this->assertEquals(1, $parsedAccessToken->claims()->get('foo'));
+        $this->assertEquals(2, $parsedRefreshToken->claims()->get('bar'));
+    }
+
+    public function test_tokens_has_custom_claims_after_refresh()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+
+        $token = $requestGuard->create($user)->setAccessClaims(['foo' => 1])->setRefreshClaims(['bar' => 2])->getToken();
+
+        $newToken = $requestGuard->refresh($token->refreshToken)->refreshToken();
+
+        $parser = new Parser(new JoseEncoder());
+        $parsedAccessToken = $parser->parse($newToken->accessToken);
+        $parsedRefreshToken = $parser->parse($newToken->refreshToken);
+
+        $this->assertNotEquals($token->accessToken, $newToken->accessToken);
+        $this->assertNotEquals($token->refreshToken, $newToken->refreshToken);
+        $this->assertEquals(1, $parsedAccessToken->claims()->get('foo'));
+        $this->assertEquals(2, $parsedRefreshToken->claims()->get('bar'));
+    }
 
 }

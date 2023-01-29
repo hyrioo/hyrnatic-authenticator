@@ -40,50 +40,5 @@ class HasApiTokensTest extends TestCase
             'prefix'   => '',
         ]);
     }
-
-    public function test_tokens_can_be_created()
-    {
-        $user = AuthUser::createTestUser();
-        $expire = \Carbon\Carbon::now();
-
-        $newToken = $user->createToken('test', ['foo'], $expire);
-
-        $parser = new Parser(new JoseEncoder());
-        $parsedAccessToken = $parser->parse($newToken->accessToken);
-        $parsedRefreshToken = $parser->parse($newToken->refreshToken);
-        $expectedSubject = $user->id.'|'.$user->getMorphClass();
-
-        $this->assertTrue($parsedAccessToken->isRelatedTo($expectedSubject));
-        $this->assertEquals($newToken->tokenFamily->family, $parsedAccessToken->claims()->get('fam'));
-
-        $this->assertEquals($newToken->tokenFamily->family, $parsedRefreshToken->claims()->get('fam'));
-    }
-
-    public function test_token_can_be_refreshed()
-    {
-        $user = AuthUser::createTestUser();
-        $newToken = $user->createToken('test', ['foo']);
-
-        $refreshedToken = $user->refreshToken($newToken->refreshToken);
-
-        $parser = new Parser(new JoseEncoder());
-        $parsedAccessToken = $parser->parse($newToken->accessToken);
-        $expectedSubject = $user->id.'|'.$user->getMorphClass();
-
-        $this->assertTrue($parsedAccessToken->isRelatedTo($expectedSubject));
-        $this->assertEquals($newToken->tokenFamily->family, $parsedAccessToken->claims()->get('fam'));
-        $this->assertEquals($refreshedToken->tokenFamily->family, $parsedAccessToken->claims()->get('fam'));
-    }
-
-    public function test_refresh_token_can_detect_reuse()
-    {
-        $user = AuthUser::createTestUser();
-        $newToken = $user->createToken('test', ['foo']);
-
-        $refreshedToken = $user->refreshToken($newToken->refreshToken);
-
-        $this->expectException(RefreshTokenReuseException::class);
-        $refreshedToken2 = $user->refreshToken($newToken->refreshToken);
-    }
 }
 

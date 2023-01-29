@@ -1,6 +1,6 @@
 <?php
 
-namespace Hyrioo\HyrnaticAuthenticator\Tests;
+namespace Hyrioo\HyrnaticAuthenticator\Tests\Models;
 
 use Hyrioo\HyrnaticAuthenticator\HasApiTokens;
 use Illuminate\Foundation\Auth\User;

@@ -57,6 +57,8 @@ class TokenFamily extends Model implements HasAbilities
      */
     protected $hidden = [
         'family',
+        'access_claims',
+        'refresh_claims',
     ];
 
     /**
@@ -108,7 +110,7 @@ class TokenFamily extends Model implements HasAbilities
         return $this->last_refresh_sequence === $sequence;
     }
 
-    public function invalidate()
+    public function revoke()
     {
         if (!$this->delete()) {
             throw new FailedToDeleteTokenFamilyException();
