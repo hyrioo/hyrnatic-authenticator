@@ -12,12 +12,12 @@ class AuthUser extends User implements HasApiTokensContract
 
     protected $table = 'users';
 
-    public static function createTestUser()
+    public static function createTestUser($id = 1)
     {
         $user = new self();
-        $user->id = 1;
+        $user->id = $id;
         $user->name = 'John Doe';
-        $user->email = 'user@example.com';
+        $user->email = "user+{$id}@example.com";
         $user->password = 'password';
         $user->save();
 

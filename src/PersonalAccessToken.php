@@ -17,7 +17,6 @@ class PersonalAccessToken implements HasAbilities
         $this->scopes = $this->accessToken->claims()->get('scp');
     }
 
-
     /**
      * Determine if the token has a given scope.
      *

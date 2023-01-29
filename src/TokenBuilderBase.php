@@ -23,9 +23,12 @@ class TokenBuilderBase
     protected ?CarbonInterface $accessExpiresAt = null;
     protected ?CarbonInterface $refreshExpiresAt = null;
 
+    protected JWT $jwt;
+
     public function __construct(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $model)
     {
         $this->model = $model;
+        $this->jwt = new JWT();
     }
 
     public function setAccessExpiresAt(CarbonInterface $expiresAt): static
@@ -68,51 +71,39 @@ class TokenBuilderBase
 
     protected function createAccessToken(string $family, ?DateTimeImmutable $expiresAt): string
     {
-        $tokenBuilder = (new Builder(new JoseEncoder(), ChainedFormatter::default()));
-        $algorithm = new Sha256();
-        $signingKey = InMemory::plainText(config('hyrnatic-authenticator.secret'));
-        $now = now();
-
         $subject = $this->model->getKey().'|'.$this->model->getMorphClass();
-        $token = $tokenBuilder
-            ->issuedAt($now->toImmutable())
+        $tokenBuilder = $this->jwt->create()
+            ->issuedAt(now()->toImmutable())
             ->relatedTo($subject)
             ->withClaim('fam', $family)
             ->withClaim('scp', $this->scopes);
 
         foreach ($this->accessClaims as $name => $claim) {
-            $token->withClaim($name, $claim);
+            $tokenBuilder->withClaim($name, $claim);
         }
 
         if($expiresAt) {
-            $token->expiresAt($expiresAt);
+            $tokenBuilder->expiresAt($expiresAt);
         }
-        $token = $token->getToken($algorithm, $signingKey);
 
-        return $token->toString();
+        return $this->jwt->encode($tokenBuilder);
     }
 
     protected function createRefreshToken(string $family, int $sequence, ?DateTimeImmutable $expiresAt): string
     {
-        $tokenBuilder = (new Builder(new JoseEncoder(), ChainedFormatter::default()));
-        $algorithm = new Sha256();
-        $signingKey = InMemory::plainText(config('hyrnatic-authenticator.secret'));
-        $now = now();
-
-        $token = $tokenBuilder
-            ->issuedAt($now->toImmutable())
+        $tokenBuilder = $this->jwt->create()
+            ->issuedAt(now()->toImmutable())
             ->withClaim('fam', $family)
             ->withClaim('seq', $sequence);
 
         foreach ($this->refreshClaims as $name => $claim) {
-            $token->withClaim($name, $claim);
+            $tokenBuilder->withClaim($name, $claim);
         }
 
         if($expiresAt) {
-            $token->expiresAt($expiresAt);
+            $tokenBuilder->expiresAt($expiresAt);
         }
-        $token = $token->getToken($algorithm, $signingKey);
 
-        return $token->toString();
+        return $this->jwt->encode($tokenBuilder);
     }
 }

@@ -3,6 +3,9 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/workflow/status/hyrioo/hyrnatic-authenticator/Check%20&%20fix%20styling?label=code%20style)](https://github.com/hyrioo/hyrnatic-authenticator/actions?query=workflow%3A"Check+%26+fix+styling"+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/hyrioo/hyrnatic-authenticator.svg?style=flat-square)](https://packagist.org/packages/hyrioo/hyrnatic-authenticator)
 
+**JWT based authentication for Laravel**  
+With refresh tokens and automatic reuse detection.
+
 ## Installation
 
 You can install the package via composer:
@@ -54,6 +57,7 @@ Add `hyrnatic-authenticator` as the driver to your api guard.
 ```
 
 ### Issuing tokens
+When issuing a new token, you will get a new token family, an access token and a refresh token. The token family can have a nam, if you eg. want to show the active logins for the user. You can set individual expire for all three. It's also possible to set custom claims for both the access and refresh token.
 ```php
 $builder = auth('api')->create($user) // NewTokenBuilder
 $builder->setName('Phone');
@@ -68,6 +72,7 @@ $token->refreshToken;
 ```
 
 ### Refresh token
+When refreshing the token, you can set a new expire for both the access and refresh tokens. But scopes and custom claims will be the same.
 ```php
 $builder = auth('api')->refresh($request->refresh_token); // RefreshTokenBuilder
 $builder->setAccessExpiresAt(now()->addMinutes(5));
@@ -77,6 +82,13 @@ $token = $builder->refreshToken();
 $token->accessToken;
 $token->refreshToken;
 ```
+
+### Revoke token
+When revoking a token the entire token family will be revoked, and both refresh and access tokens will stop working.
+```php
+auth('api')->logout();
+```
+
 
 ## Testing
 

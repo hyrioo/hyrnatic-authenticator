@@ -17,6 +17,8 @@ use Illuminate\Http\Request;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token;
 use Lcobucci\JWT\Token\Parser;
+use Lcobucci\JWT\Validation\Constraint\SignedWith;
+use Lcobucci\JWT\Validation\Validator;
 
 class Guard implements \Illuminate\Contracts\Auth\Guard
 {
@@ -49,6 +51,8 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      */
     protected Request $request;
 
+    private JWT $jwt;
+
     /**
      * Create a new guard instance.
      *
@@ -63,6 +67,8 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $this->provider = $provider;
         $this->providerName = $providerName;
         $this->request = $request;
+
+        $this->jwt = new JWT();
     }
 
     public function user(): Contracts\HasApiTokens|Authenticatable|null
@@ -81,16 +87,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     {
         if ($accessToken = $this->getTokenFromRequest($request)) {
 
-            $parser = new Parser(new JoseEncoder());
-            try {
-                $parsedToken = $parser->parse($accessToken);
-            } catch (Exception $e) {
-                throw new TokenInvalidException();
-            }
-
-            if(!$this->isValidAccessToken($parsedToken)) {
-                return;
-            }
+            $parsedToken = $this->jwt->decode($accessToken);
 
             /** @var \Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable */
             $authable = $this->retrieveAuthable($parsedToken);
@@ -148,16 +145,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
 
     public function refresh(string $jwtToken): RefreshTokenBuilder
     {
-        $parser = new Parser(new JoseEncoder());
-        try {
-            $token = $parser->parse($jwtToken);
-        } catch (Exception) {
-            throw new TokenInvalidException();
-        }
-
-        if($token->isExpired(now())) {
-            throw new TokenExpiredException();
-        }
+        $token = $this->jwt->decode($jwtToken);
 
         $family = $token->claims()->get('fam');
         $sequence = (int) $token->claims()->get('seq');
@@ -304,6 +292,9 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             } catch (Exception $e) {
                 throw new TokenInvalidException();
             }
+
+            $validator = new Validator();
+//            $validator->validate($parsedToken, new SignedWith());
 
             if (!$this->isValidAccessToken($parsedToken)) {
                 return;

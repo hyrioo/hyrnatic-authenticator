@@ -3,7 +3,9 @@
 namespace Hyrioo\HyrnaticAuthenticator\Tests;
 
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\SecretMissingException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Hyrioo\HyrnaticAuthenticator\Guard;
 use Hyrioo\HyrnaticAuthenticator\Tests\Models\AuthUser;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
@@ -117,8 +119,7 @@ class GuardTest extends TestCase
 
         $requestGuard->setRequest($request);
 
-        $requestUser = $requestGuard->user();
-        $this->assertNull($requestUser);
+        $this->assertException(TokenExpiredException::class, fn() => $requestGuard->user());
     }
 
     public function test_authentication_fails_if_family_expired()
@@ -300,6 +301,46 @@ class GuardTest extends TestCase
         $this->assertNotEquals($token->refreshToken, $newToken->refreshToken);
         $this->assertEquals(1, $parsedAccessToken->claims()->get('foo'));
         $this->assertEquals(2, $parsedRefreshToken->claims()->get('bar'));
+    }
+
+    public function test_secret_is_required()
+    {
+        config(['hyrnatic-authenticator.secret' => null]);
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+
+        $factory = $this->app->make(AuthFactory::class);
+
+        $user = AuthUser::createTestUser();
+        $this->assertException(SecretMissingException::class, function() use ($factory, $user) {
+            /** @var Guard $requestGuard */
+            $requestGuard = $factory->guard('api');
+            $token = $requestGuard->create($user)->setAccessClaims(['foo' => 1])->setRefreshClaims(['bar' => 2])->getToken();
+        });
+    }
+
+    public function test_subject_cannot_be_manipulated()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+        $user2 = AuthUser::createTestUser(2);
+        $token = $requestGuard->create($user)->getToken();
+
+        $manipulatedToken = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE2NzQ5OTcwMDQuNjA2MTE4LCJzdWIiOiIyfEh5cmlvb1xcSHlybmF0aWNBdXRoZW50aWNhdG9yXFxUZXN0c1xcTW9kZWxzXFxBdXRoVXNlciIsImZhbSI6IlVpSUpWa2FnZEZmdU5BWkVZekJmZEwxMjVxMW9wWVptcEkzNjU5SUk4TGt2dEwxZiIsInNjcCI6WyIqIl19.bcN3E2TssP2924yWIENVpQJWHmK4oaSHJDkZtEdtz4w';
+
+        $request = Request::create('/', 'GET');
+        $request->headers->set('Authorization', 'Bearer '.$manipulatedToken);
+        $requestGuard->setRequest($request);
+
+        $this->assertException(TokenInvalidException::class, fn() => $requestGuard->user());
     }
 
 }
