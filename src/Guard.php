@@ -80,10 +80,18 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             return $this->user;
         }
 
-        return $this->user = $this->retrieveUser($this->request);
+        try {
+            return $this->user = $this->retrieveUser($this->request);
+        } catch (Exception) {
+            return null;
+        }
     }
 
-    protected function retrieveUser(Request $request)
+    /**
+     * @throws TokenInvalidException
+     * @throws TokenExpiredException
+     */
+    public function retrieveUser(Request $request)
     {
         if ($accessToken = $this->getTokenFromRequest($request)) {
 

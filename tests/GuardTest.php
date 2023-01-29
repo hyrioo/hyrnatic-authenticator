@@ -119,7 +119,8 @@ class GuardTest extends TestCase
 
         $requestGuard->setRequest($request);
 
-        $this->assertException(TokenExpiredException::class, fn() => $requestGuard->user());
+        $this->assertException(TokenExpiredException::class, fn() => $requestGuard->retrieveUser($request));
+        $this->assertNull($requestGuard->user());
     }
 
     public function test_authentication_fails_if_family_expired()
@@ -144,7 +145,8 @@ class GuardTest extends TestCase
 
         $requestGuard->setRequest($request);
 
-        $this->assertException(TokenExpiredException::class, fn() => $requestGuard->user());
+        $this->assertException(TokenExpiredException::class, fn() => $requestGuard->retrieveUser($request));
+        $this->assertNull($requestGuard->user());
     }
 
     public function test_token_can_be_refreshed()
@@ -338,9 +340,8 @@ class GuardTest extends TestCase
 
         $request = Request::create('/', 'GET');
         $request->headers->set('Authorization', 'Bearer '.$manipulatedToken);
-        $requestGuard->setRequest($request);
 
-        $this->assertException(TokenInvalidException::class, fn() => $requestGuard->user());
+        $this->assertException(TokenInvalidException::class, fn() => $requestGuard->retrieveUser($request));
     }
 
 }
