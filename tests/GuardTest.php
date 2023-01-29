@@ -245,7 +245,6 @@ class GuardTest extends TestCase
 
         $request = Request::create('/', 'GET');
         $request->headers->set('Authorization', 'Bearer '.$token->accessToken);
-
         $requestGuard->setRequest($request);
 
         $requestGuard->refresh($token->refreshToken)->refreshToken();
@@ -341,6 +340,31 @@ class GuardTest extends TestCase
         $request = Request::create('/', 'GET');
         $request->headers->set('Authorization', 'Bearer '.$manipulatedToken);
 
+        $this->assertException(TokenInvalidException::class, fn() => $requestGuard->retrieveUser($request));
+    }
+
+    public function test_guard_can_logout()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+        $token = $requestGuard->create($user)->getToken();
+
+        $request = Request::create('/', 'GET');
+        $request->headers->set('Authorization', 'Bearer '.$token->accessToken);
+        $requestGuard->setRequest($request);
+
+        $this->assertNotNull($requestGuard->user());
+
+        $requestGuard->logout();
+
+        $this->assertNull($requestGuard->user());
         $this->assertException(TokenInvalidException::class, fn() => $requestGuard->retrieveUser($request));
     }
 

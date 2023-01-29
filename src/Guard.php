@@ -53,7 +53,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * The current token.
      */
-    protected ?PersonalAccessToken $token;
+    protected ?PersonalAccessToken $token = null;
 
     /**
      * Create a new guard instance.
@@ -188,7 +188,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
 
         if (!$tokenFamily->isMostRecentRefresh($sequence)) {
             $tokenFamily->revoke();
-            $this->user = null;
+            $this->forgetUser();
             throw new RefreshTokenReuseException();
         } else if ($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
             throw new TokenExpiredException();
@@ -319,34 +319,11 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      */
     public function logout(): void
     {
-        if ($accessToken = $this->getTokenFromRequest($this->request)) {
-            $parser = new Parser(new JoseEncoder());
-            try {
-                $parsedToken = $parser->parse($accessToken);
-            } catch (Exception $e) {
-                throw new TokenInvalidException();
-            }
+        try {
+            $personalAccessToken = $this->token();
+            $personalAccessToken?->tokenFamily->revoke();
+        } catch (Exception) { }
 
-            $validator = new Validator();
-//            $validator->validate($parsedToken, new SignedWith());
-
-            if (!$this->isValidAccessToken($parsedToken)) {
-                return;
-            }
-
-            $authable = $this->retrieveAuthable($parsedToken);
-            if (!$this->supportsTokens($authable)) {
-                return;
-            }
-
-            $tokenFamily = $this->retrieveTokenFamily($parsedToken);
-            if (!$tokenFamily) {
-                return;
-            }
-
-            $tokenFamily->revoke();
-        }
-
-        $this->user = null;
+        $this->forgetUser();
     }
 }
