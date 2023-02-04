@@ -2,11 +2,12 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
-use Carbon\CarbonInterface;
 use Exception;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
+use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
+use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
 use Illuminate\Auth\GuardHelpers;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
@@ -14,11 +15,7 @@ use Illuminate\Contracts\Auth\UserProvider;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
-use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token;
-use Lcobucci\JWT\Token\Parser;
-use Lcobucci\JWT\Validation\Constraint\SignedWith;
-use Lcobucci\JWT\Validation\Validator;
 
 class Guard implements \Illuminate\Contracts\Auth\Guard
 {
@@ -110,7 +107,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     {
         $personalAccessToken = $this->retrieveToken($request);
 
-        /** @var \Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable */
+        /** @var Contracts\HasApiTokens $authable */
         $authable = $this->retrieveAuthable($personalAccessToken->accessToken);
         if (!$this->supportsTokens($authable)) {
             return;
@@ -172,7 +169,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             ));
     }
 
-    public function create(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable): NewTokenBuilder
+    public function create(Contracts\HasApiTokens $authable): NewTokenBuilder
     {
         return new NewTokenBuilder($authable);
     }
@@ -227,16 +224,6 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         return !empty($token);
     }
 
-    /**
-     * Determine if the provided access token is valid.
-     *
-     * @param Token $token
-     * @return bool
-     */
-    protected function isValidAccessToken(Token $token): bool
-    {
-        return !$token->isExpired(now());
-    }
 
     /**
      * Determine if the authable model matches the provider's model type.
@@ -272,7 +259,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             return null;
         }
 
-        return $this->hasValidProvider($authable,) ? $authable : null;
+        return $this->hasValidProvider($authable) ? $authable : null;
     }
 
     /**

@@ -35,8 +35,9 @@ php artisan vendor:publish --tag="hyrnatic-authenticator-config"
 
 ### Update user model
 Add the `Hyrioo\HyrnaticAuthenticator\HasApiTokens` trait to your user model.
+
 ```php
-use Hyrioo\HyrnaticAuthenticator\HasApiTokens;
+use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
  
 class User extends Authenticatable
 {
@@ -57,14 +58,14 @@ Add `hyrnatic-authenticator` as the driver to your api guard.
 ```
 
 ### Issuing tokens
-When issuing a new token, you will get a new token family, an access token and a refresh token. The token family can have a nam, if you eg. want to show the active logins for the user. You can set individual expire for all three. It's also possible to set custom claims for both the access and refresh token.
+When issuing a new token, you will get a new token family, an access token and a refresh token. The token family can have a name, if you eg. want to show the active logins for the user. You can set individual expire for all three. It's also possible to set custom claims for both the access and refresh token.
 ```php
 $builder = auth('api')->create($user) // NewTokenBuilder
-$builder->setName('Phone');
-$builder->setScopes(['photo.*']);
-$builder->setFamilyExpiresAt(now()->addYear());
-$builder->setAccessExpiresAt(now()->addMinutes(5));
-$builder->setRefreshExpiresAt(now()->addMonth());
+$builder->setName('Phone'); // Optional
+$builder->setScopes(['photo.*']); // Optional
+$builder->setFamilyExpiresAt(now()->addYear()); // Optional
+$builder->setAccessExpiresAt(now()->addMinutes(5)); // Optional
+$builder->setRefreshExpiresAt(now()->addMonth()); // Optional
 
 $token = $builder->getToken();
 $token->accessToken;
@@ -75,8 +76,8 @@ $token->refreshToken;
 When refreshing the token, you can set a new expire for both the access and refresh tokens. But scopes and custom claims will be the same.
 ```php
 $builder = auth('api')->refresh($request->refresh_token); // RefreshTokenBuilder
-$builder->setAccessExpiresAt(now()->addMinutes(5));
-$builder->setRefreshExpiresAt(now()->addMonth());
+$builder->setAccessExpiresAt(now()->addMinutes(5)); // Optional
+$builder->setRefreshExpiresAt(now()->addMonth()); // Optional
 
 $token = $builder->refreshToken();
 $token->accessToken;

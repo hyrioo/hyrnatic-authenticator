@@ -2,7 +2,7 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Tests\Models;
 
-use Hyrioo\HyrnaticAuthenticator\HasApiTokens;
+use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
 use Illuminate\Foundation\Auth\User;
 use Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens as HasApiTokensContract;
 

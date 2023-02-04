@@ -3,6 +3,7 @@
 namespace Hyrioo\HyrnaticAuthenticator;
 
 use Carbon\CarbonInterface;
+use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
 use Illuminate\Support\Str;
 
 class NewTokenBuilder extends TokenBuilderBase

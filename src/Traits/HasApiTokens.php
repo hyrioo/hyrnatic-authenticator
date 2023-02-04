@@ -1,6 +1,6 @@
 <?php
 
-namespace Hyrioo\HyrnaticAuthenticator;
+namespace Hyrioo\HyrnaticAuthenticator\Traits;
 
 use Carbon\CarbonInterface;
 use Exception;
@@ -8,6 +8,8 @@ use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
+use Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticator;
+use Hyrioo\HyrnaticAuthenticator\PersonalAccessToken;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Parser;

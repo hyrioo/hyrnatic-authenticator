@@ -3,7 +3,7 @@
 namespace Hyrioo\HyrnaticAuthenticator\Commands;
 
 use Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticator;
-use Hyrioo\HyrnaticAuthenticator\TokenFamily;
+use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
 use Illuminate\Console\Command;
 
 class PruneExpired extends Command

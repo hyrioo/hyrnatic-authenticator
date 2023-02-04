@@ -1,7 +1,7 @@
 <?php
 
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
-use Hyrioo\HyrnaticAuthenticator\HasApiTokens;
+use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
 use Illuminate\Foundation\Auth\User;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Parser;

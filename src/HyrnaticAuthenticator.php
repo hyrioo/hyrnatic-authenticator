@@ -2,9 +2,6 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
-use Illuminate\Contracts\Auth\Authenticatable;
-use Mockery;
-
 class HyrnaticAuthenticator
 {
     /**
@@ -19,7 +16,7 @@ class HyrnaticAuthenticator
      *
      * @var string
      */
-    public static string $tokenFamilyModel = 'Hyrioo\\HyrnaticAuthenticator\\TokenFamily';
+    public static string $tokenFamilyModel = 'Hyrioo\\HyrnaticAuthenticator\\Models\\TokenFamily';
 
     /**
      * A callback that can get the token from the request.
@@ -29,51 +26,11 @@ class HyrnaticAuthenticator
     public static $accessTokenRetrievalCallback;
 
     /**
-     * A callback that can add to the validation of the access token.
-     *
-     * @var callable|null
-     */
-    public static $accessTokenAuthenticationCallback;
-
-    /**
      * Indicates if HyrnaticAuthenticator's migrations will be run.
      *
      * @var bool
      */
     public static bool $runsMigrations = true;
-
-    /**
-     * Set the current user for the application with the given scopes.
-     *
-     * @param Authenticatable|HasApiTokens $user
-     * @param array $scopes
-     * @param string $guard
-     * @return Authenticatable
-     */
-    public static function actingAs($user, array $scopes = [], string $guard = 'hyrnatic-authenticator')
-    {
-        $token = Mockery::mock(self::personalAccessTokenModel())->shouldIgnoreMissing(false);
-
-        if (in_array('*', $scopes)) {
-            $token->shouldReceive('can')->withAnyArgs()->andReturn(true);
-        } else {
-            foreach ($scopes as $scope) {
-                $token->shouldReceive('can')->with($scope)->andReturn(true);
-            }
-        }
-
-        $user->withAccessToken($token);
-
-        if (isset($user->wasRecentlyCreated) && $user->wasRecentlyCreated) {
-            $user->wasRecentlyCreated = false;
-        }
-
-        app('auth')->guard($guard)->setUser($user);
-
-        app('auth')->shouldUse($guard);
-
-        return $user;
-    }
 
     /**
      * Set the personal access token model name.
@@ -100,23 +57,12 @@ class HyrnaticAuthenticator
     /**
      * Specify a callback that should be used to fetch the access token from the request.
      *
-     * @param callable $callback
+     * @param  callable  $callback
      * @return void
      */
-    public static function getAccessTokenFromRequestUsing(callable $callback): void
+    public static function getAccessTokenFromRequestUsing(callable $callback)
     {
         static::$accessTokenRetrievalCallback = $callback;
-    }
-
-    /**
-     * Specify a callback that should be used to authenticate access tokens.
-     *
-     * @param callable $callback
-     * @return void
-     */
-    public static function authenticateAccessTokensUsing(callable $callback): void
-    {
-        static::$accessTokenAuthenticationCallback = $callback;
     }
 
     /**
@@ -149,5 +95,15 @@ class HyrnaticAuthenticator
     public static function personalAccessTokenModel(): string
     {
         return static::$personalAccessTokenModel;
+    }
+
+    /**
+     * Get the token family model class name.
+     *
+     * @return string
+     */
+    public static function tokenFamilyModel(): string
+    {
+        return static::$tokenFamilyModel;
     }
 }

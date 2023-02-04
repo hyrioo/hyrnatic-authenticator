@@ -1,6 +1,6 @@
 <?php
 
-namespace Hyrioo\HyrnaticAuthenticator;
+namespace Hyrioo\HyrnaticAuthenticator\Models;
 
 use Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
@@ -41,12 +41,7 @@ class TokenFamily extends Model implements HasAbilities
      */
     protected $fillable = [
         'name',
-        'family',
-        'scopes',
-        'access_claims',
-        'refresh_claims',
         'last_used_at',
-        'expires_at',
         'prune_at',
     ];
 

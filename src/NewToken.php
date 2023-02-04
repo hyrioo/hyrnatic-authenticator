@@ -2,6 +2,7 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
+use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
 

@@ -3,6 +3,7 @@
 namespace Hyrioo\HyrnaticAuthenticator;
 
 use Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities;
+use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
 use Lcobucci\JWT\Token;
 
 class PersonalAccessToken implements HasAbilities

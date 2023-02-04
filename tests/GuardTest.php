@@ -317,7 +317,7 @@ class GuardTest extends TestCase
         $this->assertException(SecretMissingException::class, function() use ($factory, $user) {
             /** @var Guard $requestGuard */
             $requestGuard = $factory->guard('api');
-            $token = $requestGuard->create($user)->setAccessClaims(['foo' => 1])->setRefreshClaims(['bar' => 2])->getToken();
+            $requestGuard->create($user)->setAccessClaims(['foo' => 1])->setRefreshClaims(['bar' => 2])->getToken();
         });
     }
 
