@@ -2,6 +2,8 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
+use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
+
 class HyrnaticAuthenticator
 {
     /**
@@ -105,5 +107,23 @@ class HyrnaticAuthenticator
     public static function tokenFamilyModel(): string
     {
         return static::$tokenFamilyModel;
+    }
+
+    /**
+     * @param \Illuminate\Contracts\Auth\Authenticatable|HasApiTokens $user
+     * @param array $scopes
+     * @return \Illuminate\Contracts\Auth\Authenticatable
+     */
+    public static function actingAs($user, $scopes = [], $guard = 'api')
+    {
+//        $token = (new NewTokenBuilder($user))->getToken();
+//        $parsedToken = $this->jwt->decode($accessToken);
+//        $personalAccessToken = new (self::personalAccessTokenModel())($token->accessToken);
+//        $user->withAccessToken($personalAccessToken);
+
+        app('auth')->guard($guard)->setUser($user);
+        app('auth')->shouldUse($guard);
+
+        return $user;
     }
 }
