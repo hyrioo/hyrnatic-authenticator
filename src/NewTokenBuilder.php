@@ -4,6 +4,7 @@ namespace Hyrioo\HyrnaticAuthenticator;
 
 use Carbon\CarbonInterface;
 use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
 
 class NewTokenBuilder extends TokenBuilderBase
@@ -59,7 +60,8 @@ class NewTokenBuilder extends TokenBuilderBase
         $tokenFamily->refresh_claims = $this->refreshClaims;
         $tokenFamily->expires_at = self::getFamilyTokenExpiration($this->familyExpiresAt);
         $tokenFamily->last_refresh_sequence = 1;
-        $tokenFamily->prune_at = $refreshExpiresAt = self::getRefreshTokenExpiration($this->refreshExpiresAt);
+        $refreshExpiresAt = self::getRefreshTokenExpiration($this->refreshExpiresAt);
+        $tokenFamily->prune_at = self::getPruneAt($tokenFamily->expires_at, Date::make($refreshExpiresAt));
 
         $accessToken = $this->createAccessToken($family, self::getAccessTokenExpiration($this->accessExpiresAt));
         $refreshToken = $this->createRefreshToken($family, $tokenFamily->last_refresh_sequence, $refreshExpiresAt);

@@ -73,7 +73,7 @@ $token->refreshToken;
 ```
 
 ### Refresh token
-When refreshing the token, you can set a new expire for both the access and refresh tokens. But scopes and custom claims will be the same.
+When refreshing the token, you can set a new expiry for both the access and refresh tokens. But scopes and custom claims will be the same.
 ```php
 $builder = auth('api')->refresh($request->refresh_token); // RefreshTokenBuilder
 $builder->setAccessExpiresAt(now()->addMinutes(5)); // Optional

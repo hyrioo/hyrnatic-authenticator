@@ -13,28 +13,26 @@ class PruneExpired extends Command
      *
      * @var string
      */
-    protected $signature = 'sanctum:prune-expired {--hours=24 : The number of hours to retain expired Sanctum tokens}';
+    protected $signature = 'authenticator:prune-expired';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    public $description = 'Prune tokens expired for more than specified number of hours';
+    public $description = 'Prune tokens families';
 
     public function handle(): int
     {
         /** @var TokenFamily $model */
         $model = HyrnaticAuthenticator::$tokenFamilyModel;
 
-        $hours = $this->option('hours');
-
         $this->components->task(
-            'Pruning tokens with expired expires_at timestamps',
-            fn () => $model::query()->where('expires_at', '<', now()->subHours($hours))->orWhere('prune_at', '<', now()->subHours($hours))->delete()
+            'Pruning tokens with prune_at older than now',
+            fn () => $model::query()->where('prune_at', '<', now())->delete()
         );
 
-        $this->components->info("Tokens expired for more than [$hours hours] pruned successfully.");
+        $this->components->info("Tokens pruned successfully.");
 
         return self::SUCCESS;
     }

@@ -69,6 +69,23 @@ class TokenBuilderBase
         return self::getTokenExpiration('refresh', $expiresAt);
     }
 
+    protected static function getPruneAt(?CarbonInterface $familyExpiresAt, ?CarbonInterface $refreshExpiresAt): ?DateTimeImmutable
+    {
+        if($familyExpiresAt === null) {
+            return $refreshExpiresAt?->toImmutable();
+        }
+
+        if($refreshExpiresAt === null) {
+            return $familyExpiresAt?->toImmutable();
+        }
+
+        if($familyExpiresAt->lt($refreshExpiresAt)) {
+            return $familyExpiresAt?->toImmutable();
+        }
+
+        return $refreshExpiresAt?->toImmutable();
+    }
+
     protected function createAccessToken(string $family, ?DateTimeImmutable $expiresAt): string
     {
         $subject = $this->model->getKey().'|'.$this->model->getMorphClass();
