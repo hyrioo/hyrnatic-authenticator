@@ -9,6 +9,11 @@ class ProjectCreate extends Permission
 {
     public static string $key = 'project.create';
 }
+
+class ProjectEdit extends Permission
+{
+    public static string $key = 'project.edit';
+}
 ```
 
 ### Create permission group
@@ -23,6 +28,7 @@ class DefaultUser extends PermissionGroup
 
     public static array $permissions = [
         ProjectCreate::class,
+        ProjectEdit::class,
     ];
 }
 ```
@@ -36,6 +42,7 @@ public function boot()
     
     HyrnaticAuthenticator::registerPermissions([
         ProjectCreate::class,
+        ProjectEdit::class,
     ]);
     
     HyrnaticAuthenticator::registerPermissionGroups([
@@ -55,13 +62,21 @@ $user->assignScope(new DefaultUser);
 ```php
 $user = auth()->user();
 
-// Check if the user has the permission assigned.
+// Check if the user has the permission globally assigned.
 if(!$user->modelCan(new ProjectCreate)) {
     return Response::deny(__('auth.you_dont_have_sufficient_permissions_for_this'));
 }
+// Check if the user is assigned a permission for a specific model.
+if(!$user->modelCan(new ProjectEdit, $project)) {
+    return Response::deny(__('auth.you_dont_have_sufficient_permissions_for_this'));
+}
 
-// Check if the current token has the permission
+// Check if the current token has the permission.
 if(!$user->tokenCan(new ProjectCreate)) {
+    return Response::deny(__('auth.your_access_token_dont_have_sufficient_permissions_for_this'));
+}
+// Check if the current token has permission for a specific model.
+if(!$user->tokenCan(new ProjectEdit, $project)) {
     return Response::deny(__('auth.your_access_token_dont_have_sufficient_permissions_for_this'));
 }
 ```
