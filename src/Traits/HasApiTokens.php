@@ -4,6 +4,7 @@ namespace Hyrioo\HyrnaticAuthenticator\Traits;
 
 use Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticator;
 use Hyrioo\HyrnaticAuthenticator\Models\ModelHasScope;
+use Hyrioo\HyrnaticAuthenticator\Models\Permission;
 use Hyrioo\HyrnaticAuthenticator\Models\Scope;
 use Hyrioo\HyrnaticAuthenticator\PersonalAccessToken;
 use Illuminate\Database\Eloquent\Builder;
@@ -70,7 +71,7 @@ trait HasApiTokens
      * @param $model
      * @return bool
      */
-    public function modelCan(string $permission, $model = null): bool
+    public function modelCan(Permission $permission, $model = null): bool
     {
         $scopes = ModelHasScope::query()->whereMorphedTo('authable', $this)->where(function(Builder $q) use ($model) {
             if($model === null) {
@@ -83,7 +84,7 @@ trait HasApiTokens
         })->get();
         $compilePermissions = self::compilePermissions($scopes->pluck('scope')->values()->all());
 
-        return $compilePermissions->has($permission);
+        return $compilePermissions->has($permission::getKey()) || $compilePermissions->has('*');
     }
 
     /**
@@ -93,10 +94,14 @@ trait HasApiTokens
      * @param $model
      * @return bool
      */
-    public function tokenCan(string $permission, $model = null): bool
+    public function tokenCan(Permission $permission, $model = null): bool
     {
         $compilePermissions = self::compilePermissionsFromToken($this->accessToken->scopes);
-        $matchingScope = $compilePermissions->get($permission);
+        $matchingScope = $compilePermissions->get($permission::getKey());
+
+        if($compilePermissions->has('*')) {
+            return true;
+        }
 
         return !($matchingScope === null || ($model !== null && !self::matchingIdentifier($matchingScope, $model->getKey())));
     }
@@ -134,6 +139,10 @@ trait HasApiTokens
         }
 
         return $permissions->mapWithKeys(function ($item) {
+            if($item === '*') {
+                return ['*' => null];
+            }
+
             preg_match('/([\w.]+?)(\[(.*)])?$/', $item, $matches);
             $key = $matches[1];
             $ids = isset($matches[3]) ? explode(',', $matches[3]) : null;

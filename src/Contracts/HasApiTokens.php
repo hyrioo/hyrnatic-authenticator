@@ -2,6 +2,7 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Contracts;
 
+use Hyrioo\HyrnaticAuthenticator\Models\Permission;
 use Hyrioo\HyrnaticAuthenticator\PersonalAccessToken;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
@@ -17,10 +18,11 @@ interface HasApiTokens
     /**
      * Determine if the current API token has a given scope.
      *
-     * @param  string  $scope
+     * @param Permission $permission
+     * @param null $model
      * @return bool
      */
-    public function tokenCan(string $scope): bool;
+    public function tokenCan(Permission $permission, $model = null): bool;
 
     /**
      * Get the access token currently associated with the user.

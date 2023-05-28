@@ -5,6 +5,7 @@ namespace Hyrioo\HyrnaticAuthenticator;
 use Hyrioo\HyrnaticAuthenticator\Models\Permission;
 use Hyrioo\HyrnaticAuthenticator\Models\PermissionGroup;
 use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
+use Illuminate\Contracts\Auth\Authenticatable;
 
 class HyrnaticAuthenticator
 {
@@ -40,12 +41,12 @@ class HyrnaticAuthenticator
     /**
      * @var \Illuminate\Support\Collection
      */
-    protected static $permissions;
+    public static $permissions;
 
     /**
      * @var \Illuminate\Support\Collection
      */
-    protected static $permissionGroups;
+    public static $permissionGroups;
 
     public static function registerPermissions(array $permissions)
     {
@@ -141,16 +142,20 @@ class HyrnaticAuthenticator
     }
 
     /**
-     * @param \Illuminate\Contracts\Auth\Authenticatable|HasApiTokens $user
+     * @param Contracts\HasApiTokens $user
      * @param array $scopes
-     * @return \Illuminate\Contracts\Auth\Authenticatable
+     * @param string $guard
+     * @return Authenticatable
      */
-    public static function actingAs($user, $scopes = [], $guard = 'api')
+    public static function actingAs(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $user, $scopes = ['*'], $guard = 'api')
     {
-//        $token = (new NewTokenBuilder($user))->getToken();
-//        $parsedToken = $this->jwt->decode($accessToken);
-//        $personalAccessToken = new (self::personalAccessTokenModel())($token->accessToken);
-//        $user->withAccessToken($personalAccessToken);
+        $jwt = new JWT();
+        $builder = new NewTokenBuilder($user);
+        $builder->setScopes($scopes);
+        $token = $builder->getToken();
+        $parsedToken = $jwt->decode($token->accessToken);
+        $personalAccessToken = new (self::personalAccessTokenModel())($parsedToken, $token->tokenFamily);
+        $user->withAccessToken($personalAccessToken);
 
         app('auth')->guard($guard)->setUser($user);
         app('auth')->shouldUse($guard);
