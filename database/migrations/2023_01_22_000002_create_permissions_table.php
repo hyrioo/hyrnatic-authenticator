@@ -8,25 +8,18 @@ return new class extends Migration
 {
     public function up()
     {
-        /*Schema::create('permission_groups', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
+        Schema::create('model_has_scope', function (Blueprint $table) {
+            $table->morphs('authable');
+            $table->nullableMorphs('model');
             $table->string('scope');
-
             $table->timestamps();
-        });*/
 
-        Schema::create('model_has_role', function (Blueprint $table) {
-            $table->string('role');
-            $table->morphs('model');
-
-            $table->timestamps();
+            $table->index(['authable_id', 'authable_type', 'model_id', 'model_type']);
         });
     }
 
     public function down()
     {
-        Schema::dropIfExists('model_has_role');
-//        Schema::dropIfExists('permission_groups');
+        Schema::dropIfExists('model_has_scope');
     }
 };

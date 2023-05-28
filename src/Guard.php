@@ -165,8 +165,8 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     protected function supportsTokens($authable = null): bool
     {
         return $authable && in_array(HasApiTokens::class, class_uses_recursive(
-                get_class($authable)
-            ));
+            get_class($authable)
+        ));
     }
 
     public function create(Contracts\HasApiTokens $authable): NewTokenBuilder

@@ -2,6 +2,8 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
+use Hyrioo\HyrnaticAuthenticator\Models\Permission;
+use Hyrioo\HyrnaticAuthenticator\Models\PermissionGroup;
 use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
 
 class HyrnaticAuthenticator
@@ -33,6 +35,35 @@ class HyrnaticAuthenticator
      * @var bool
      */
     public static bool $runsMigrations = true;
+
+
+    /**
+     * @var \Illuminate\Support\Collection
+     */
+    protected static $permissions;
+
+    /**
+     * @var \Illuminate\Support\Collection
+     */
+    protected static $permissionGroups;
+
+    public static function registerPermissions(array $permissions)
+    {
+        self::$permissions = collect();
+        /** @var Permission $permission */
+        foreach ($permissions as $permission) {
+            self::$permissions->put($permission::getKey(), $permission);
+        }
+    }
+
+    public static function registerPermissionGroups(array $permissionGroups)
+    {
+        self::$permissionGroups = collect();
+        /** @var PermissionGroup $permissionGroup */
+        foreach ($permissionGroups as $permissionGroup) {
+            self::$permissionGroups->put($permissionGroup::getKey(), $permissionGroup);
+        }
+    }
 
     /**
      * Set the personal access token model name.

@@ -11,7 +11,7 @@ class PersonalAccessToken implements HasAbilities
     public Token $accessToken;
     public TokenFamily $tokenFamily;
 
-    protected array $scopes;
+    public array $scopes;
 
     public function __construct(Token $accessToken, TokenFamily $tokenFamily)
     {
