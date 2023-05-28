@@ -4,6 +4,9 @@ namespace Hyrioo\HyrnaticAuthenticator\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property string $scope
+ */
 class ModelHasScope extends Model
 {
     public function authable()

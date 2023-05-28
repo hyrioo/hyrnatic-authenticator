@@ -2,10 +2,8 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Models;
 
-abstract class PermissionGroup
+abstract class PermissionGroup extends Scope
 {
-    protected static string $key;
-
     public static array $permissions;
 
     public static function getKey() {

@@ -4,6 +4,7 @@ namespace Hyrioo\HyrnaticAuthenticator\Traits;
 
 use Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticator;
 use Hyrioo\HyrnaticAuthenticator\Models\ModelHasScope;
+use Hyrioo\HyrnaticAuthenticator\Models\Scope;
 use Hyrioo\HyrnaticAuthenticator\PersonalAccessToken;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -26,6 +27,18 @@ trait HasApiTokens
     public function tokenFamilies(): MorphMany
     {
         return $this->morphMany(HyrnaticAuthenticator::$tokenFamilyModel, 'authable');
+    }
+
+    public function assignScope(Scope $scope, $model = null)
+    {
+        $modelHasScope = new ModelHasScope();
+        $modelHasScope->scope = $scope::getKey();
+        $modelHasScope->authable()->associate($this);
+        if($model) {
+            $modelHasScope->model()->associate($model);
+        }
+
+        $modelHasScope->save();
     }
 
     /**

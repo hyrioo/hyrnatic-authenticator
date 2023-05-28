@@ -2,11 +2,6 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Models;
 
-abstract class Permission
+abstract class Permission extends Scope
 {
-    protected static string $key;
-
-    public static function getKey() {
-        return static::$key;
-    }
 }
