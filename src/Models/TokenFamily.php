@@ -3,6 +3,7 @@
 namespace Hyrioo\HyrnaticAuthenticator\Models;
 
 use Hyrioo\HyrnaticAuthenticator\Contracts\HasAbilities;
+use Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
 use Illuminate\Database\Eloquent\Model;
 
@@ -14,11 +15,12 @@ use Illuminate\Database\Eloquent\Model;
  * @property array $access_claims
  * @property array $refresh_claims
  * @property int $last_refresh_sequence
+ * @@property-read HasApiTokens $authable
  * @property \Illuminate\Support\Carbon|null $last_used_at
  * @property \Illuminate\Support\Carbon|null $expires_at
  * @property \Illuminate\Support\Carbon|null $prune_at
  */
-class TokenFamily extends Model implements HasAbilities
+class TokenFamily extends Model
 {
     /**
      * The attributes that should be cast to native types.

@@ -62,7 +62,7 @@ When issuing a new token, you will get a new token family, an access token and a
 ```php
 $builder = auth('api')->create($user) // NewTokenBuilder
 $builder->setName('Phone'); // Optional
-$builder->setScopes(['photo.*']); // Optional
+$builder->setScopes(['photo.manage']); // Optional
 $builder->setFamilyExpiresAt(now()->addYear()); // Optional
 $builder->setAccessExpiresAt(now()->addMinutes(5)); // Optional
 $builder->setRefreshExpiresAt(now()->addMonth()); // Optional

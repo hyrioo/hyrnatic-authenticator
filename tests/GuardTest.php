@@ -368,4 +368,24 @@ class GuardTest extends TestCase
         $this->assertException(TokenInvalidException::class, fn() => $requestGuard->retrieveUser($request));
     }
 
+    public function test_guard_can_set_token()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+        $token = $requestGuard->create($user)->getToken();
+
+        $this->assertNull($requestGuard->user());
+
+        $requestGuard->setToken($token->accessToken);
+
+        $this->assertNotNull($requestGuard->user());
+    }
+
 }

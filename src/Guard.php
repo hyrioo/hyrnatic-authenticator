@@ -3,37 +3,43 @@
 namespace Hyrioo\HyrnaticAuthenticator;
 
 use Exception;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenFamilyNotFoundException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
 use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
-use Illuminate\Auth\GuardHelpers;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Auth\UserProvider;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Lcobucci\JWT\Token;
+use RuntimeException;
 
 class Guard implements \Illuminate\Contracts\Auth\Guard
 {
-    use GuardHelpers;
-
     /**
      * The authentication factory implementation.
      *
      * @var AuthFactory
      */
-    protected $auth;
+    protected AuthFactory $auth;
+
+    /**
+     * The currently authenticated user.
+     *
+     * @var Authenticatable|null
+     */
+    protected ?Authenticatable $user = null;
 
     /**
      * The provider instance.
      *
-     * @var UserProvider
+     * @var UserProvider|null
      */
-    protected $provider;
+    protected ?UserProvider $provider;
 
     /**
      * The provider name.
@@ -75,7 +81,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         // If we've already retrieved the user for the current request we can just
         // return it back immediately. We do not want to fetch the user data on
         // every call to this method because that would be tremendously slow.
-        if (!is_null($this->user)) {
+        if ($this->hasUser()) {
             return $this->user;
         }
 
@@ -87,12 +93,21 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     }
 
     /**
+     * Determine if the guard has a token instance
+     * @return bool
+     */
+    public function hasToken(): bool
+    {
+        return !is_null($this->token);
+    }
+
+    /**
      * @throws TokenInvalidException
      * @throws TokenExpiredException
      */
     public function token(): PersonalAccessToken|null
     {
-        if (!is_null($this->token)) {
+        if ($this->hasToken()) {
             return $this->token;
         }
 
@@ -103,14 +118,18 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * @throws TokenInvalidException
      * @throws TokenExpiredException
      */
-    public function retrieveUser(Request $request)
+    public function retrieveUser(Request $request): ?Contracts\HasApiTokens
     {
-        $personalAccessToken = $this->retrieveToken($request);
+        $this->request = $request;
+        $personalAccessToken = $this->token();
+        if (!$personalAccessToken) {
+            return null;
+        }
 
         /** @var Contracts\HasApiTokens $authable */
         $authable = $this->retrieveAuthable($personalAccessToken->accessToken);
         if (!$this->supportsTokens($authable)) {
-            return;
+            return null;
         }
 
         $authable->withAccessToken(
@@ -121,7 +140,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
 
         if (method_exists($tokenFamily->getConnection(), 'hasModifiedRecords') &&
             method_exists($tokenFamily->getConnection(), 'setRecordModificationState')) {
-            tap($tokenFamily->getConnection()->hasModifiedRecords(), function ($hasModifiedRecords) use ($tokenFamily) {
+            tap($tokenFamily->getConnection()->hasModifiedRecords(), static function ($hasModifiedRecords) use ($tokenFamily) {
                 $tokenFamily->forceFill(['last_used_at' => now()])->save();
 
                 $tokenFamily->getConnection()->setRecordModificationState($hasModifiedRecords);
@@ -140,18 +159,8 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     public function retrieveToken(Request $request): PersonalAccessToken|null
     {
         if ($accessToken = $this->getTokenFromRequest($request)) {
-            $parsedToken = $this->jwt->decode($accessToken);
-
-            $tokenFamily = $this->retrieveTokenFamily($parsedToken);
-            if (!$tokenFamily) {
-                throw new TokenInvalidException();
-            }
-
-            if ($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
-                throw new TokenExpiredException();
-            }
-
-            return new HyrnaticAuthenticator::$personalAccessTokenModel($parsedToken, $tokenFamily);
+            $this->setToken($accessToken);
+            return $this->token;
         }
         return null;
     }
@@ -159,14 +168,14 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * Determine if the authable model supports API tokens.
      *
-     * @param mixed $authable
+     * @param mixed|null $authable
      * @return bool
      */
-    protected function supportsTokens($authable = null): bool
+    protected function supportsTokens(mixed $authable): bool
     {
         return $authable && in_array(HasApiTokens::class, class_uses_recursive(
             get_class($authable)
-        ));
+        ), true);
     }
 
     public function create(Contracts\HasApiTokens $authable): NewTokenBuilder
@@ -174,6 +183,13 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         return new NewTokenBuilder($authable);
     }
 
+    /**
+     * @throws TokenFamilyNotFoundException
+     * @throws RefreshTokenReuseException
+     * @throws TokenInvalidException
+     * @throws TokenExpiredException
+     * @throws FailedToDeleteTokenFamilyException
+     */
     public function refresh(string $jwtToken): RefreshTokenBuilder
     {
         $token = $this->jwt->decode($jwtToken);
@@ -182,18 +198,20 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $sequence = (int)$token->claims()->get('seq');
 
         $tokenFamily = TokenFamily::findTokenFamily($family);
-
+        if (!$tokenFamily) {
+            throw new TokenFamilyNotFoundException();
+        }
         if (!$tokenFamily->isMostRecentRefresh($sequence)) {
             $tokenFamily->revoke();
-            $this->forgetUser();
+            $this->forget();
             throw new RefreshTokenReuseException();
-        } else if ($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
-            throw new TokenExpiredException();
-        } else {
-            $authable = $tokenFamily->authable;
-            $builder = new RefreshTokenBuilder($authable, $tokenFamily);
-            return $builder;
         }
+        if ($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
+            throw new TokenExpiredException();
+        }
+
+        $authable = $tokenFamily->authable;
+        return new RefreshTokenBuilder($authable, $tokenFamily);
     }
 
     /**
@@ -228,16 +246,12 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * Determine if the authable model matches the provider's model type.
      *
-     * @param Model $authable
+     * @param Authenticatable $authable
      * @return bool
      */
-    protected function hasValidProvider($authable): bool
+    protected function hasValidProvider(Authenticatable $authable): bool
     {
-        if (is_null($this->providerName)) {
-            return true;
-        }
-
-        $model = config("auth.providers.{$this->providerName}.model");
+        $model = config("auth.providers.$this->providerName.model");
 
         return $authable instanceof $model;
     }
@@ -246,7 +260,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * Determine if the provided access token is valid.
      *
      * @param Token $token
-     * @return Authenticatable
+     * @return Authenticatable|null
      */
     protected function retrieveAuthable(Token $token): ?Authenticatable
     {
@@ -299,18 +313,102 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     }
 
     /**
+     * @throws Exception
+     */
+    public function setUser(Authenticatable $user): void
+    {
+        throw new RuntimeException('It is not supported to set the user directly. Used the setToken method instead');
+    }
+
+    /**
+     * @throws TokenInvalidException
+     * @throws TokenExpiredException
+     */
+    public function setToken(string $accessToken): void
+    {
+        $parsedToken = $this->jwt->decode($accessToken);
+
+        $tokenFamily = $this->retrieveTokenFamily($parsedToken);
+        if (!$tokenFamily) {
+            throw new TokenInvalidException();
+        }
+
+        if ($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
+            throw new TokenExpiredException();
+        }
+
+        $this->token = new HyrnaticAuthenticator::$personalAccessTokenModel($parsedToken, $tokenFamily);
+    }
+
+    /**
      * Logs out the user, and revokes the family
      * @return void
-     * @throws Exceptions\FailedToDeleteTokenFamilyException
-     * @throws TokenInvalidException
      */
     public function logout(): void
     {
         try {
             $personalAccessToken = $this->token();
             $personalAccessToken?->tokenFamily->revoke();
-        } catch (Exception) { }
+        } catch (Exception) {
+        }
 
-        $this->forgetUser();
+        $this->forget();
+    }
+
+    /**
+     * Forget the current user and token.
+     *
+     * @return $this
+     */
+    public function forget(): static
+    {
+        $this->user = null;
+        $this->token = null;
+
+        return $this;
+    }
+
+
+    /**
+     * Determine if the current user is authenticated.
+     *
+     * @return bool
+     */
+    public function check(): bool
+    {
+        return !is_null($this->user());
+    }
+
+    /**
+     * Determine if the current user is a guest.
+     *
+     * @return bool
+     */
+    public function guest(): bool
+    {
+        return !$this->check();
+    }
+
+    /**
+     * Get the ID for the currently authenticated user.
+     *
+     * @return int|string|null
+     */
+    public function id(): int|string|null
+    {
+        if ($this->user()) {
+            return $this->user()->getAuthIdentifier();
+        }
+        return null;
+    }
+
+    /**
+     * Determine if the guard has a user instance.
+     *
+     * @return bool
+     */
+    public function hasUser(): bool
+    {
+        return !is_null($this->user);
     }
 }

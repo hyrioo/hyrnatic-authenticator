@@ -149,15 +149,15 @@ class HyrnaticAuthenticator
      */
     public static function actingAs(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $user, $scopes = ['*'], $guard = 'api')
     {
-        $jwt = new JWT();
+//        $jwt = new JWT();
         $builder = new NewTokenBuilder($user);
         $builder->setScopes($scopes);
         $token = $builder->getToken();
-        $parsedToken = $jwt->decode($token->accessToken);
-        $personalAccessToken = new (self::personalAccessTokenModel())($parsedToken, $token->tokenFamily);
-        $user->withAccessToken($personalAccessToken);
+//        $parsedToken = $jwt->decode($token->accessToken);
+//        $personalAccessToken = new (self::personalAccessTokenModel())($parsedToken, $token->tokenFamily);
+//        $user->withAccessToken($personalAccessToken);
 
-        app('auth')->guard($guard)->setUser($user);
+        app('auth')->guard($guard)->setToken($token->accessToken);
         app('auth')->shouldUse($guard);
 
         return $user;
