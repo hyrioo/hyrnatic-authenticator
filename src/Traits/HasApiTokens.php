@@ -106,6 +106,17 @@ trait HasApiTokens
         return !($matchingScope === null || ($model !== null && !self::matchingIdentifier($matchingScope, $model->getKey())));
     }
 
+    /**
+     * Determine if both the authable and the current API token has a given permission.
+     * @param Permission $permission
+     * @param $model
+     * @return bool
+     */
+    public function modelAndTokenCan(Permission $permission, $model = null): bool
+    {
+        return $this->modelCan($permission, $model) && $this->tokenCan($permission, $model);
+    }
+
     private static function compilePermissions(array $scopes): Collection
     {
         $permissions = collect();

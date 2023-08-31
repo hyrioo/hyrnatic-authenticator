@@ -7,7 +7,6 @@ use Hyrioo\HyrnaticAuthenticator\Exceptions\SecretMissingException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Lcobucci\Clock\FrozenClock;
-use Lcobucci\Clock\SystemClock;
 use Lcobucci\JWT\Encoding\ChainedFormatter;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Signer\Hmac\Sha256;
