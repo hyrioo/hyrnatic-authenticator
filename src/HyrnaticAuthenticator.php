@@ -153,19 +153,18 @@ class HyrnaticAuthenticator
         $builder->setScopes($scopes);
         $token = $builder->getToken();
 
-        app('auth')->guard($guard)->setToken($token->accessToken);
-        app('auth')->shouldUse($guard);
+        self::actingAsToken($token->accessToken, $guard);
 
         return $user;
     }
 
     /**
-     * @param NewToken $token
+     * @param string $token
      * @param string $guard
      */
-    public static function actingAsToken(NewToken $token, string $guard = 'api'): void
+    public static function actingAsToken(string $token, string $guard = 'api'): void
     {
-        app('auth')->guard($guard)->setToken($token->accessToken);
+        app('auth')->guard($guard)->setToken($token);
         app('auth')->shouldUse($guard);
     }
 }

@@ -327,6 +327,8 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      */
     public function setToken(string $accessToken): void
     {
+        $this->forget();
+
         $parsedToken = $this->jwt->decode($accessToken);
 
         $tokenFamily = $this->retrieveTokenFamily($parsedToken);

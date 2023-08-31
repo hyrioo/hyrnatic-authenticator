@@ -103,7 +103,11 @@ trait HasApiTokens
             return true;
         }
 
-        return !($matchingScope === null || ($model !== null && !self::matchingIdentifier($matchingScope, $model->getKey())));
+        if($compilePermissions->has($permission::getKey())){
+            return $model === null || self::matchingIdentifier($matchingScope, $model->getKey());
+        }
+        
+        return false;
     }
 
     /**
