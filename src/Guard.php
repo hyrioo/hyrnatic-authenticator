@@ -16,6 +16,7 @@ use Illuminate\Contracts\Auth\UserProvider;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Lcobucci\JWT\Token;
+use Lcobucci\JWT\Token\Plain;
 use RuntimeException;
 
 class Guard implements \Illuminate\Contracts\Auth\Guard
@@ -279,10 +280,10 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * Determine if the provided access token is valid.
      *
-     * @param Token $token
+     * @param Plain $token
      * @return ?TokenFamily
      */
-    protected function retrieveTokenFamily(Token $token): ?TokenFamily
+    protected function retrieveTokenFamily(Token\Plain $token): ?TokenFamily
     {
         $family = $token->claims()->get('fam');
         return TokenFamily::findTokenFamily($family);

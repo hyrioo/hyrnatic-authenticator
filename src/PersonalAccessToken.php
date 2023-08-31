@@ -7,12 +7,12 @@ use Lcobucci\JWT\Token;
 
 class PersonalAccessToken
 {
-    public Token $accessToken;
+    public Token\Plain $accessToken;
     public TokenFamily $tokenFamily;
 
     public array $scopes;
 
-    public function __construct(Token $accessToken, TokenFamily $tokenFamily)
+    public function __construct(Token\Plain $accessToken, TokenFamily $tokenFamily)
     {
         $this->accessToken = $accessToken;
         $this->tokenFamily = $tokenFamily;

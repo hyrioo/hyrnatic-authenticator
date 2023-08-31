@@ -51,7 +51,7 @@ class JWT
      * @throws TokenInvalidException
      * @throws TokenExpiredException
      */
-    public function decode(string $jwt): Token
+    public function decode(string $jwt): Token\Plain
     {
         $parser = new Parser(new JoseEncoder());
         try {
