@@ -96,11 +96,11 @@ class TokenBuilderBase
             ->withClaim('scp', $this->scopes);
 
         foreach ($this->accessClaims as $name => $claim) {
-            $tokenBuilder->withClaim($name, $claim);
+            $tokenBuilder = $tokenBuilder->withClaim($name, $claim);
         }
 
         if($expiresAt) {
-            $tokenBuilder->expiresAt($expiresAt);
+            $tokenBuilder = $tokenBuilder->expiresAt($expiresAt);
         }
 
         return $this->jwt->encode($tokenBuilder);
@@ -114,11 +114,11 @@ class TokenBuilderBase
             ->withClaim('seq', $sequence);
 
         foreach ($this->refreshClaims as $name => $claim) {
-            $tokenBuilder->withClaim($name, $claim);
+            $tokenBuilder = $tokenBuilder->withClaim($name, $claim);
         }
 
         if($expiresAt) {
-            $tokenBuilder->expiresAt($expiresAt);
+            $tokenBuilder = $tokenBuilder->expiresAt($expiresAt);
         }
 
         return $this->jwt->encode($tokenBuilder);

@@ -3,7 +3,6 @@
 namespace Hyrioo\HyrnaticAuthenticator\Tests;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticatorServiceProvider;
 use PHPUnit\Framework\Constraint\Exception as ExceptionConstraint;

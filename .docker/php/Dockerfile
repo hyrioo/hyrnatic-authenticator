@@ -1,4 +1,4 @@
-FROM phpdockerio/php:8.1-fpm
+FROM phpdockerio/php:8.3-fpm
 
 # Install selected extensions and other stuff
 RUN apt-get update \
@@ -10,12 +10,12 @@ RUN apt-get update \
     nano \
     vim \
     openssl \
-    php8.1-common \
-    php8.1-mysql \
-    php8.1-sqlite3 \
-    php8.1-gd \
-    php8.1-bcmath \
-    php8.1-intl \
+    php8.3-common \
+    php8.3-mysql \
+    php8.3-sqlite3 \
+    php8.3-gd \
+    php8.3-bcmath \
+    php8.3-intl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
 
