@@ -73,6 +73,63 @@ class GuardTest extends TestCase
         $this->assertEquals($newToken->tokenFamily->family, $parsedRefreshToken->claims()->get('fam'));
     }
 
+    public function test_tokens_can_override_configured_expirations_with_null()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+        config(['hyrnatic-authenticator.family_expiration' => 120]);
+        config(['hyrnatic-authenticator.access_expiration' => 60]);
+        config(['hyrnatic-authenticator.refresh_expiration' => 30]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+
+        $token = $requestGuard->create($user)
+            ->setFamilyExpiresAt(null)
+            ->setAccessExpiresAt(null)
+            ->setRefreshExpiresAt(null)
+            ->getToken();
+
+        $parser = new Parser(new JoseEncoder());
+        $parsedAccessToken = $parser->parse($token->accessToken);
+        $parsedRefreshToken = $parser->parse($token->refreshToken);
+
+        $this->assertFalse($parsedAccessToken->claims()->has('exp'));
+        $this->assertFalse($parsedRefreshToken->claims()->has('exp'));
+        $this->assertNull($token->tokenFamily->expires_at);
+        $this->assertNull($token->tokenFamily->prune_at);
+    }
+
+    public function test_config_expiration_is_anchored_when_new_token_builder_is_created()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+        config(['hyrnatic-authenticator.access_expiration' => 60]);
+        config(['hyrnatic-authenticator.refresh_expiration' => 30]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+        $anchor = now()->copy();
+        $builder = $requestGuard->create($user);
+        $this->travel(10)->minutes();
+
+        $token = $builder->getToken();
+        $parser = new Parser(new JoseEncoder());
+        $parsedAccessToken = $parser->parse($token->accessToken);
+        $parsedRefreshToken = $parser->parse($token->refreshToken);
+
+        $this->assertEquals($anchor->copy()->addMinutes(60)->getTimestamp(), $parsedAccessToken->claims()->get('exp')->getTimestamp());
+        $this->assertEquals($anchor->copy()->addMinutes(30)->getTimestamp(), $parsedRefreshToken->claims()->get('exp')->getTimestamp());
+    }
+
     public function test_authentication_succeeds()
     {
         config(['auth.guards.api.provider' => 'users']);
@@ -177,6 +234,64 @@ class GuardTest extends TestCase
         $this->assertTrue($parsedAccessToken->isRelatedTo($expectedSubject));
         $this->assertEquals($token->tokenFamily->family, $parsedAccessToken->claims()->get('fam'));
         $this->assertEquals($newToken->tokenFamily->family, $parsedAccessToken->claims()->get('fam'));
+    }
+
+    public function test_refresh_can_override_configured_expirations_with_null()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+        config(['hyrnatic-authenticator.family_expiration' => null]);
+        config(['hyrnatic-authenticator.access_expiration' => 60]);
+        config(['hyrnatic-authenticator.refresh_expiration' => 30]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+        $token = $requestGuard->create($user)->getToken();
+
+        $newToken = $requestGuard->refresh($token->refreshToken)
+            ->setAccessExpiresAt(null)
+            ->setRefreshExpiresAt(null)
+            ->refreshToken();
+
+        $parser = new Parser(new JoseEncoder());
+        $parsedAccessToken = $parser->parse($newToken->accessToken);
+        $parsedRefreshToken = $parser->parse($newToken->refreshToken);
+
+        $this->assertFalse($parsedAccessToken->claims()->has('exp'));
+        $this->assertFalse($parsedRefreshToken->claims()->has('exp'));
+        $this->assertNull($newToken->tokenFamily->prune_at);
+    }
+
+    public function test_config_expiration_is_anchored_when_refresh_builder_is_created()
+    {
+        config(['auth.guards.api.provider' => 'users']);
+        config(['auth.guards.api.driver' => 'hyrnatic-authenticator']);
+        config(['auth.providers.users.model' => AuthUser::class]);
+        config(['hyrnatic-authenticator.access_expiration' => 60]);
+        config(['hyrnatic-authenticator.refresh_expiration' => 30]);
+
+        $factory = $this->app->make(AuthFactory::class);
+        /** @var Guard $requestGuard */
+        $requestGuard = $factory->guard('api');
+
+        $user = AuthUser::createTestUser();
+        $token = $requestGuard->create($user)->getToken();
+
+        $anchor = now()->copy();
+        $builder = $requestGuard->refresh($token->refreshToken);
+        $this->travel(10)->minutes();
+
+        $newToken = $builder->refreshToken();
+        $parser = new Parser(new JoseEncoder());
+        $parsedAccessToken = $parser->parse($newToken->accessToken);
+        $parsedRefreshToken = $parser->parse($newToken->refreshToken);
+
+        $this->assertEquals($anchor->copy()->addMinutes(60)->getTimestamp(), $parsedAccessToken->claims()->get('exp')->getTimestamp());
+        $this->assertEquals($anchor->copy()->addMinutes(30)->getTimestamp(), $parsedRefreshToken->claims()->get('exp')->getTimestamp());
     }
 
     public function test_refresh_fails_if_expired()

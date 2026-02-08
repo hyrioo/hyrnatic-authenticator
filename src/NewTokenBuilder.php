@@ -13,6 +13,12 @@ class NewTokenBuilder extends TokenBuilderBase
 
     private ?CarbonInterface $familyExpiresAt = null;
 
+    public function __construct(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $model)
+    {
+        parent::__construct($model);
+        $this->familyExpiresAt = $this->getConfigTokenExpiration('family');
+    }
+
     public function setName(string $name): static
     {
         $this->name = $name;
@@ -41,7 +47,7 @@ class NewTokenBuilder extends TokenBuilderBase
         return $this;
     }
 
-    public function setFamilyExpiresAt(CarbonInterface $expiresAt): static
+    public function setFamilyExpiresAt(?CarbonInterface $expiresAt): static
     {
         $this->familyExpiresAt = $expiresAt;
 

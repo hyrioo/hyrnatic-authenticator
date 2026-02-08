@@ -71,6 +71,7 @@ $token = $builder->getToken();
 $token->accessToken;
 $token->refreshToken;
 ```
+Pass `null` to `setFamilyExpiresAt`, `setAccessExpiresAt` or `setRefreshExpiresAt` to explicitly disable expiration for that value.
 
 ### Refresh token
 When refreshing the token, you can set a new expiry for both the access and refresh tokens. But scopes and custom claims will be the same.

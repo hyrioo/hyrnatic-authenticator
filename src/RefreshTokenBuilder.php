@@ -2,10 +2,8 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
-use Carbon\CarbonInterface;
 use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
 use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Str;
 
 class RefreshTokenBuilder extends TokenBuilderBase
 {

@@ -1,4 +1,5 @@
 {
+    "version": "0.1.0",
     "name": "hyrioo/hyrnatic-authenticator",
     "description": "This is my package hyrnatic-authenticator",
     "keywords": [

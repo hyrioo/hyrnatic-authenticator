@@ -28,45 +28,49 @@ class TokenBuilderBase
     public function __construct(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $model)
     {
         $this->model = $model;
+        $this->accessExpiresAt = $this->getConfigTokenExpiration('access');
+        $this->refreshExpiresAt = $this->getConfigTokenExpiration('refresh');
         $this->jwt = new JWT();
     }
 
-    public function setAccessExpiresAt(CarbonInterface $expiresAt): static
+    public function setAccessExpiresAt(?CarbonInterface $expiresAt): static
     {
         $this->accessExpiresAt = $expiresAt;
 
         return $this;
     }
-    public function setRefreshExpiresAt(CarbonInterface $expiresAt): static
+    public function setRefreshExpiresAt(?CarbonInterface $expiresAt): static
     {
         $this->refreshExpiresAt = $expiresAt;
 
         return $this;
     }
 
-    protected static function getTokenExpiration(string $key, CarbonInterface $expiresAt = null): ?DateTimeImmutable
+    protected function getConfigTokenExpiration(string $key): ?CarbonInterface
     {
-        if($expiresAt) {
-            return $expiresAt->toDateTimeImmutable();
-        } else {
-            $minutes = config("hyrnatic-authenticator.{$key}_expiration");
-            return $minutes ? now()->addMinutes($minutes)->toImmutable() : null;
-        }
+        $minutes = config("hyrnatic-authenticator.{$key}_expiration");
+
+        return $minutes ? now()->addMinutes($minutes) : null;
+    }
+
+    protected static function getTokenExpiration(CarbonInterface $expiresAt = null): ?DateTimeImmutable
+    {
+        return $expiresAt?->toDateTimeImmutable();
     }
 
     protected static function getFamilyTokenExpiration(CarbonInterface $expiresAt = null): ?DateTimeImmutable
     {
-        return self::getTokenExpiration('family', $expiresAt);
+        return self::getTokenExpiration($expiresAt);
     }
 
     protected static function getAccessTokenExpiration(CarbonInterface $expiresAt = null): ?DateTimeImmutable
     {
-        return self::getTokenExpiration('access', $expiresAt);
+        return self::getTokenExpiration($expiresAt);
     }
 
     protected static function getRefreshTokenExpiration(CarbonInterface $expiresAt = null): ?DateTimeImmutable
     {
-        return self::getTokenExpiration('refresh', $expiresAt);
+        return self::getTokenExpiration($expiresAt);
     }
 
     protected static function getPruneAt(?CarbonInterface $familyExpiresAt, ?CarbonInterface $refreshExpiresAt): ?DateTimeImmutable
