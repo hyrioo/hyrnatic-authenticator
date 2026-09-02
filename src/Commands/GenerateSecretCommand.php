@@ -25,7 +25,7 @@ class GenerateSecretCommand extends Command
             return self::SUCCESS;
         }
 
-        $path = $this->laravel->environmentFilePath();
+        $path = $this->laravel->basePath('.env');
 
         if (Str::contains(file_get_contents($path), 'JWT_SECRET') === false) {
             // create new entry

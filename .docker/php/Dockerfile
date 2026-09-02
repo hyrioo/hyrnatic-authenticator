@@ -12,12 +12,15 @@ RUN apt-get update \
     openssl \
     php8.3-common \
     php8.3-mysql \
+    php8.3-pgsql \
     php8.3-sqlite3 \
     php8.3-gd \
     php8.3-bcmath \
     php8.3-intl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
+
+RUN git config --system --add safe.directory /var/www
 
 # Install Composer
 RUN cd /usr/src && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer

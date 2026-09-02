@@ -2,62 +2,33 @@
 
 namespace Hyrioo\HyrnaticAuthenticator\Traits;
 
-use Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticator;
-use Hyrioo\HyrnaticAuthenticator\Models\ModelHasScope;
-use Hyrioo\HyrnaticAuthenticator\Models\Permission;
-use Hyrioo\HyrnaticAuthenticator\Models\Scope;
+use Hyrioo\HyrnaticAuthenticator\Contracts\Scopeable;
+use Hyrioo\HyrnaticAuthenticator\Models\ModelScope;
 use Hyrioo\HyrnaticAuthenticator\PersonalAccessToken;
-use Illuminate\Database\Eloquent\Builder;
+use Hyrioo\HyrnaticAuthenticator\Scopes\Scope;
+use Hyrioo\HyrnaticAuthenticator\Scopes\ScopeResolver;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use Illuminate\Support\Collection;
 
 trait HasApiTokens
 {
-    /**
-     * The access token the user is using for the current request.
-     *
-     * @var ?PersonalAccessToken
-     */
     protected ?PersonalAccessToken $accessToken = null;
 
-    /**
-     * Get the access tokens that belong to model.
-     *
-     * @return MorphMany
-     */
     public function tokenFamilies(): MorphMany
     {
-        return $this->morphMany(HyrnaticAuthenticator::$tokenFamilyModel, 'authable');
+        return $this->morphMany(\Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticator::$tokenFamilyModel, 'authable');
     }
 
-    public function assignScope(Scope $scope, $model = null)
+    public function modelScopes(): MorphMany
     {
-        $modelHasScope = new ModelHasScope();
-        $modelHasScope->scope = $scope::getKey();
-        $modelHasScope->authable()->associate($this);
-        if($model) {
-            $modelHasScope->model()->associate($model);
-        }
-
-        $modelHasScope->save();
+        return $this->morphMany(ModelScope::class, 'authable');
     }
 
-    /**
-     * Get the access token currently associated with the user.
-     *
-     * @return ?PersonalAccessToken
-     */
     public function currentAccessToken(): ?PersonalAccessToken
     {
         return $this->accessToken;
     }
 
-    /**
-     * Set the current access token for the user.
-     *
-     * @param PersonalAccessToken $accessToken
-     * @return \Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens
-     */
     public function withAccessToken(PersonalAccessToken $accessToken): \Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens
     {
         $this->accessToken = $accessToken;
@@ -66,111 +37,68 @@ trait HasApiTokens
     }
 
     /**
-     * Determine if the authable has a given permission
-     * @param string $permission
-     * @param $model
-     * @return bool
+     * @param class-string<Scope>|Scopeable $scope
      */
-    public function modelCan(Permission $permission, $model = null): bool
+    public function hasScope(string|Scopeable $scope): bool
     {
-        $scopes = ModelHasScope::query()->whereMorphedTo('authable', $this)->where(function(Builder $q) use ($model) {
-            if($model === null) {
-                $q->whereNull('model_id')->whereNull('model_type');
-            } else {
-                $q->whereMorphedTo('model', $model)->orWhere(function(Builder $q) {
-                    $q->whereNull('model_id')->whereNull('model_type');
-                });
-            }
-        })->get();
-        $compilePermissions = self::compilePermissions($scopes->pluck('scope')->values()->all());
-
-        return $compilePermissions->has($permission::getKey()) || $compilePermissions->has('*');
+        return $this->inspectScope($scope)->allowed();
     }
 
     /**
-     * Determine if the current API token has a given permission.
-     *
-     * @param string $permission
-     * @param $model
-     * @return bool
+     * @param class-string<Scope>|Scopeable $scope
      */
-    public function tokenCan(Permission $permission, $model = null): bool
+    public function inspectScope(string|Scopeable $scope): Response
     {
-        $compilePermissions = self::compilePermissionsFromToken($this->accessToken->scopes);
-        $matchingScope = $compilePermissions->get($permission::getKey());
-
-        if($compilePermissions->has('*')) {
-            return true;
-        }
-
-        if($compilePermissions->has($permission::getKey())){
-            return $model === null || self::matchingIdentifier($matchingScope, $model->getKey());
-        }
-        
-        return false;
+        return $this->scopeResolver()->inspectScope($this, $scope, $this->currentAccessToken());
     }
 
     /**
-     * Determine if both the authable and the current API token has a given permission.
-     * @param Permission $permission
-     * @param $model
-     * @return bool
+     * @param class-string<Scope>|Scopeable $scope
      */
-    public function modelAndTokenCan(Permission $permission, $model = null): bool
+    public function authorizeScope(string|Scopeable $scope): Response
     {
-        return $this->modelCan($permission, $model) && $this->tokenCan($permission, $model);
+        return $this->inspectScope($scope)->authorize();
     }
 
-    private static function compilePermissions(array $scopes): Collection
+    /**
+     * @param class-string<Scope>|Scopeable $scope
+     */
+    public function modelHasScope(string|Scopeable $scope): bool
     {
-        $permissions = collect();
+        return $this->scopeResolver()->hasScope($this, $scope);
+    }
 
-        foreach ($scopes as $scope) {
-            self::expandScope($scope, $permissions);
+    /**
+     * @param class-string<Scope>|Scopeable $scope
+     */
+    public function tokenHasScope(string|Scopeable $scope): bool
+    {
+        if ($this->accessToken === null) {
+            return false;
         }
 
-        return $permissions->flip();
+        return $this->scopeResolver()->hasScope($this, $scope, $this->accessToken);
     }
 
-    private static function expandScope($scope, &$permissions): void
+    /**
+     * @param class-string<Scope>|Scopeable $scope
+     */
+    public function scope(string|Scopeable $scope): void
     {
-        if ($scope[0] === '$') {
-            $class = HyrnaticAuthenticator::$permissionGroups[$scope];
-            foreach ($class::$permissions as $permission) {
-                $key = $permission::$key;
-                self::expandScope($key, $permissions);
-            }
-        } else {
-            $permissions->push($scope);
-        }
+        $this->scopeResolver()->scope($this, $scope);
     }
 
-    private static function compilePermissionsFromToken(array $scopes): Collection
+    /**
+     * @param class-string<Scope>|Scopeable $scope
+     */
+    public function unscope(string|Scopeable $scope): void
     {
-        $permissions = collect();
-
-        foreach ($scopes as $scope) {
-            self::expandScope($scope, $permissions);
-        }
-
-        return $permissions->mapWithKeys(function ($item) {
-            if($item === '*') {
-                return ['*' => null];
-            }
-
-            preg_match('/([\w.]+?)(\[(.*)])?$/', $item, $matches);
-            $key = $matches[1];
-            $ids = isset($matches[3]) ? explode(',', $matches[3]) : null;
-            return [$key => $ids];
-        });
+        $this->scopeResolver()->unscope($this, $scope);
     }
 
-    private static function matchingIdentifier(array $ids, mixed $key): bool
+    private function scopeResolver(): ScopeResolver
     {
-        if(in_array('ALL', $ids, true)) {
-            return true;
-        }
-
-        return in_array((string) $key, $ids, true);
+        return app(ScopeResolver::class);
     }
+
 }

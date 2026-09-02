@@ -24,8 +24,8 @@ class PruneExpired extends Command
 
     public function handle(): int
     {
-        /** @var TokenFamily $model */
-        $model = HyrnaticAuthenticator::$tokenFamilyModel;
+        /** @var class-string<TokenFamily> $model */
+        $model = HyrnaticAuthenticator::tokenFamilyModel();
 
         $this->components->task(
             'Pruning tokens with prune_at older than now',

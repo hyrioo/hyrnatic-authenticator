@@ -2,166 +2,128 @@
 
 namespace Hyrioo\HyrnaticAuthenticator;
 
-use Hyrioo\HyrnaticAuthenticator\Models\Permission;
-use Hyrioo\HyrnaticAuthenticator\Models\PermissionGroup;
-use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
-use Illuminate\Contracts\Auth\Authenticatable;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\DuplicateScopeKeyException;
+use Hyrioo\HyrnaticAuthenticator\Scopes\Scope;
 
 class HyrnaticAuthenticator
 {
-    /**
-     * The personal access client model class name.
-     *
-     * @var string
-     */
     public static string $personalAccessTokenModel = 'Hyrioo\\HyrnaticAuthenticator\\PersonalAccessToken';
 
-    /**
-     * The personal refresh client model class name.
-     *
-     * @var string
-     */
     public static string $tokenFamilyModel = 'Hyrioo\\HyrnaticAuthenticator\\Models\\TokenFamily';
 
-    /**
-     * A callback that can get the token from the request.
-     *
-     * @var callable|null
-     */
+    public static string $scopeModel = 'Hyrioo\\HyrnaticAuthenticator\\Models\\Scope';
+
     public static $accessTokenRetrievalCallback;
 
-    /**
-     * Indicates if HyrnaticAuthenticator's migrations will be run.
-     *
-     * @var bool
-     */
     public static bool $runsMigrations = true;
 
+    public static $scopesByKey;
 
-    /**
-     * @var \Illuminate\Support\Collection
-     */
-    public static $permissions;
+    public static $scopeKeysByClass;
 
-    /**
-     * @var \Illuminate\Support\Collection
-     */
-    public static $permissionGroups;
-
-    public static function registerPermissions(array $permissions)
+    public static function registerScopes(array $scopes): void
     {
-        self::$permissions = collect();
-        /** @var Permission $permission */
-        foreach ($permissions as $permission) {
-            self::$permissions->put($permission::getKey(), $permission);
+        self::$scopesByKey ??= collect();
+        self::$scopeKeysByClass ??= collect();
+
+        foreach ($scopes as $scope) {
+            if (!is_a($scope, Scope::class, true)) {
+                throw new \InvalidArgumentException("Scope [{$scope}] must extend [".Scope::class.'].');
+            }
+
+            $key = $scope::scopeKey();
+            $existingClass = self::$scopesByKey->get($key);
+            $existingKey = self::$scopeKeysByClass->get($scope);
+
+            if ($existingClass !== null && $existingClass !== $scope) {
+                throw new DuplicateScopeKeyException("Scope key [{$key}] is already registered by [{$existingClass}].");
+            }
+
+            if ($existingKey !== null && $existingKey !== $key) {
+                throw new DuplicateScopeKeyException("Scope class [{$scope}] is already registered with key [{$existingKey}].");
+            }
+
+            self::$scopesByKey->put($key, $scope);
+            self::$scopeKeysByClass->put($scope, $key);
         }
     }
 
-    public static function registerPermissionGroups(array $permissionGroups)
+    public static function clearRegisteredScopes(): void
     {
-        self::$permissionGroups = collect();
-        /** @var PermissionGroup $permissionGroup */
-        foreach ($permissionGroups as $permissionGroup) {
-            self::$permissionGroups->put($permissionGroup::getKey(), $permissionGroup);
-        }
+        self::$scopesByKey = collect();
+        self::$scopeKeysByClass = collect();
     }
 
-    /**
-     * Set the personal access token model name.
-     *
-     * @param string $model
-     * @return void
-     */
+    public static function scopeClassForKey(string $key): ?string
+    {
+        return self::$scopesByKey?->get($key);
+    }
+
+    public static function scopeKeyForClass(string $scopeClass): ?string
+    {
+        return self::$scopeKeysByClass?->get($scopeClass);
+    }
+
     public static function usePersonalAccessTokenModel(string $model): void
     {
         static::$personalAccessTokenModel = $model;
     }
 
-    /**
-     * Set the token family model name.
-     *
-     * @param string $model
-     * @return void
-     */
     public static function useTokenFamilyModel(string $model): void
     {
         static::$tokenFamilyModel = $model;
     }
 
-    /**
-     * Specify a callback that should be used to fetch the access token from the request.
-     *
-     * @param  callable  $callback
-     * @return void
-     */
+    public static function useScopeModel(string $model): void
+    {
+        static::$scopeModel = $model;
+    }
+
     public static function getAccessTokenFromRequestUsing(callable $callback)
     {
         static::$accessTokenRetrievalCallback = $callback;
     }
 
-    /**
-     * Determine if HyrnaticAuthenticator's migrations should be run.
-     *
-     * @return bool
-     */
     public static function shouldRunMigrations(): bool
     {
         return static::$runsMigrations;
     }
 
-    /**
-     * Configure HyrnaticAuthenticator to not register its migrations.
-     *
-     * @return static
-     */
-    public static function ignoreMigrations(): static
+    public static function ignoreMigrations(): self
     {
         static::$runsMigrations = false;
 
-        return new static;
+        return new self();
     }
 
-    /**
-     * Get the access token model class name.
-     *
-     * @return string
-     */
     public static function personalAccessTokenModel(): string
     {
         return static::$personalAccessTokenModel;
     }
 
-    /**
-     * Get the token family model class name.
-     *
-     * @return string
-     */
     public static function tokenFamilyModel(): string
     {
         return static::$tokenFamilyModel;
     }
 
-    /**
-     * @param Contracts\HasApiTokens $user
-     * @param array $scopes
-     * @param string $guard
-     * @return Contracts\HasApiTokens
-     */
-    public static function actingAs(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $user, array $scopes = ['*'], string $guard = 'api'): Contracts\HasApiTokens
+    public static function scopeModel(): string
     {
-        $builder = new NewTokenBuilder($user);
-        $builder->setScopes($scopes);
+        return static::$scopeModel;
+    }
+
+    public static function actingAs(\Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens $authable, ?array $scopes = null, string $guard = 'api'): Contracts\HasApiTokens
+    {
+        $builder = new NewTokenBuilder($authable);
+        if ($scopes !== null) {
+            $builder->setScopes($scopes);
+        }
         $token = $builder->getToken();
 
         self::actingAsToken($token->accessToken, $guard);
 
-        return $user;
+        return $authable;
     }
 
-    /**
-     * @param string $token
-     * @param string $guard
-     */
     public static function actingAsToken(string $token, string $guard = 'api'): void
     {
         app('auth')->guard($guard)->setToken($token);

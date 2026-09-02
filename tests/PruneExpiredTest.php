@@ -36,16 +36,10 @@ class PruneExpiredTest extends TestCase
 
     protected function getEnvironmentSetUp($app)
     {
+        parent::getEnvironmentSetUp($app);
+
         $key = \Illuminate\Support\Str::random(32);
         $app['config']->set('hyrnatic-authenticator.secret', $key);
-
-        $app['config']->set('database.default', 'testbench');
-
-        $app['config']->set('database.connections.testbench', [
-            'driver'   => 'sqlite',
-            'database' => ':memory:',
-            'prefix'   => '',
-        ]);
     }
 
     public function test_can_delete_expired_token_families()

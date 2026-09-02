@@ -4,9 +4,11 @@ namespace Hyrioo\HyrnaticAuthenticator;
 
 use Exception;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\SecretMissingException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\SecretTooShortException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Lcobucci\Clock\FrozenClock;
+use Lcobucci\JWT\Builder as BuilderInterface;
 use Lcobucci\JWT\Encoding\ChainedFormatter;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Signer\Hmac\Sha256;
@@ -25,23 +27,30 @@ class JWT
 
     /**
      * @throws SecretMissingException
+     * @throws SecretTooShortException
      */
     public function __construct()
     {
         $this->signer = new Sha256();
-        if (config('hyrnatic-authenticator.secret') === null) {
+        $secret = config('hyrnatic-authenticator.secret');
+
+        if (!is_string($secret) || $secret === '') {
             throw new SecretMissingException();
-        } else {
-            $this->signingKey = InMemory::plainText(config('hyrnatic-authenticator.secret'));
         }
+
+        if (strlen($secret) < 32) {
+            throw new SecretTooShortException();
+        }
+
+        $this->signingKey = InMemory::plainText($secret);
     }
 
-    public function create(): Builder
+    public function create(): BuilderInterface
     {
         return (new Builder(new JoseEncoder(), ChainedFormatter::default()));
     }
 
-    public function encode(Builder $builder): string
+    public function encode(BuilderInterface $builder): string
     {
         $token = $builder->getToken($this->signer, $this->signingKey);
         return $token->toString();
@@ -63,6 +72,10 @@ class JWT
             if(!$validator->validate($parsedToken, new LooseValidAt(new FrozenClock(now()->toDateTimeImmutable())))) {
                 throw new TokenExpiredException();
             }
+            if (!$parsedToken instanceof Token\Plain) {
+                throw new TokenInvalidException();
+            }
+
             return $parsedToken;
         } catch (TokenInvalidException | TokenExpiredException $e) {
             throw $e;

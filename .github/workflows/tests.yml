@@ -1,0 +1,134 @@
+name: Tests
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+    workflow_dispatch:
+    workflow_call:
+
+concurrency:
+    group: tests-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+jobs:
+    quality:
+        name: Quality
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.3'
+                  coverage: none
+                  tools: composer:v2
+            - run: composer update --prefer-dist --no-interaction --no-progress
+            - run: composer validate --strict --no-check-lock
+            - run: composer analyse
+            - run: composer audit
+
+    test:
+        name: Laravel ${{ matrix.laravel }} / ${{ matrix.database }}
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                laravel:
+                    - 10
+                    - 11
+                    - 12
+                    - 13
+                database:
+                    - sqlite
+                    - mysql
+                    - pgsql
+                include:
+                    - laravel: 10
+                      testbench: ^8.22
+                      phpunit: ^10.5
+                    - laravel: 11
+                      testbench: ^9.0
+                      phpunit: ^10.5
+                    - laravel: 12
+                      testbench: ^10.0
+                      phpunit: ^11.5
+                    - laravel: 13
+                      testbench: ^11.0
+                      phpunit: ^11.5
+        services:
+            mysql:
+                image: mysql:8.0
+                env:
+                    MYSQL_DATABASE: testing
+                    MYSQL_USER: homestead
+                    MYSQL_PASSWORD: secret
+                    MYSQL_ROOT_PASSWORD: secret
+                ports:
+                    - 3306:3306
+                options: >-
+                    --health-cmd="mysqladmin ping -h localhost -psecret"
+                    --health-interval=5s
+                    --health-timeout=5s
+                    --health-retries=20
+            postgres:
+                image: postgres:16-alpine
+                env:
+                    POSTGRES_DB: testing
+                    POSTGRES_USER: postgres
+                    POSTGRES_PASSWORD: secret
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd="pg_isready -U postgres -d testing"
+                    --health-interval=5s
+                    --health-timeout=5s
+                    --health-retries=20
+        steps:
+            - uses: actions/checkout@v6
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.3'
+                  extensions: pdo_sqlite, pdo_mysql, pdo_pgsql
+                  coverage: none
+                  tools: composer:v2
+            - name: Select database
+              shell: bash
+              run: |
+                  case "${{ matrix.database }}" in
+                      sqlite)
+                          echo 'DB_CONNECTION=sqlite' >> "$GITHUB_ENV"
+                          echo 'DB_DATABASE=:memory:' >> "$GITHUB_ENV"
+                          ;;
+                      mysql)
+                          echo 'DB_CONNECTION=mysql' >> "$GITHUB_ENV"
+                          echo 'DB_HOST=127.0.0.1' >> "$GITHUB_ENV"
+                          echo 'DB_PORT=3306' >> "$GITHUB_ENV"
+                          echo 'DB_DATABASE=testing' >> "$GITHUB_ENV"
+                          echo 'DB_USERNAME=homestead' >> "$GITHUB_ENV"
+                          echo 'DB_PASSWORD=secret' >> "$GITHUB_ENV"
+                          ;;
+                      pgsql)
+                          echo 'DB_CONNECTION=pgsql' >> "$GITHUB_ENV"
+                          echo 'DB_HOST=127.0.0.1' >> "$GITHUB_ENV"
+                          echo 'DB_PORT=5432' >> "$GITHUB_ENV"
+                          echo 'DB_DATABASE=testing' >> "$GITHUB_ENV"
+                          echo 'DB_USERNAME=postgres' >> "$GITHUB_ENV"
+                          echo 'DB_PASSWORD=secret' >> "$GITHUB_ENV"
+                          ;;
+                  esac
+            - name: Install Laravel ${{ matrix.laravel }} test dependencies
+              shell: bash
+              run: |
+                  if [[ "${{ matrix.laravel }}" == '10' || "${{ matrix.laravel }}" == '11' ]]; then
+                      composer config --global policy.advisories.block false
+                  fi
+                  composer require --dev \
+                      "orchestra/testbench:${{ matrix.testbench }}" \
+                      "phpunit/phpunit:${{ matrix.phpunit }}" \
+                      --no-update --no-interaction
+                  composer update --prefer-dist --no-interaction --no-progress --with-all-dependencies
+            - run: composer test

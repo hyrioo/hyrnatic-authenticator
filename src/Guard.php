@@ -3,85 +3,48 @@
 namespace Hyrioo\HyrnaticAuthenticator;
 
 use Exception;
-use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
-use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\AuthableProviderMismatchException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\InvalidGuardConfigurationException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenFamilyNotFoundException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
-use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens;
-use Illuminate\Contracts\Auth\Authenticatable;
+use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens as HasApiTokensTrait;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Auth\UserProvider;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Lcobucci\JWT\Token;
-use Lcobucci\JWT\Token\Plain;
 use RuntimeException;
 
 class Guard implements \Illuminate\Contracts\Auth\Guard
 {
-    /**
-     * The authentication factory implementation.
-     *
-     * @var AuthFactory
-     */
     protected AuthFactory $auth;
 
-    /**
-     * The currently authenticated user.
-     *
-     * @var Authenticatable|null
-     */
-    protected ?Authenticatable $user = null;
+    protected ?Contracts\HasApiTokens $user = null;
 
-    /**
-     * The provider instance.
-     *
-     * @var UserProvider|null
-     */
     protected ?UserProvider $provider;
 
-    /**
-     * The provider name.
-     */
-    protected string $providerName;
+    protected ?string $providerName;
 
-    /**
-     * The request instance.
-     */
     protected Request $request;
 
     private JWT $jwt;
 
-    /**
-     * The current token.
-     */
     protected ?PersonalAccessToken $token = null;
 
-    /**
-     * Create a new guard instance.
-     *
-     * @param AuthFactory $auth
-     * @param Request $request
-     * @param string $providerName
-     * @param UserProvider|null $provider
-     */
-    public function __construct(AuthFactory $auth, Request $request, string $providerName, UserProvider $provider = null)
+    public function __construct(AuthFactory $auth, Request $request, ?string $providerName = null, UserProvider $provider = null)
     {
         $this->auth = $auth;
         $this->provider = $provider;
         $this->providerName = $providerName;
         $this->request = $request;
-
         $this->jwt = new JWT();
     }
 
-    public function user(): Contracts\HasApiTokens|Authenticatable|null
+    public function user(): ?Contracts\HasApiTokens
     {
-        // If we've already retrieved the user for the current request we can just
-        // return it back immediately. We do not want to fetch the user data on
-        // every call to this method because that would be tremendously slow.
         if ($this->hasUser()) {
             return $this->user;
         }
@@ -93,20 +56,16 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         }
     }
 
-    /**
-     * Determine if the guard has a token instance
-     * @return bool
-     */
     public function hasToken(): bool
     {
-        return !is_null($this->token);
+        return $this->token !== null;
     }
 
     /**
      * @throws TokenInvalidException
      * @throws TokenExpiredException
      */
-    public function token(): PersonalAccessToken|null
+    public function token(): ?PersonalAccessToken
     {
         if ($this->hasToken()) {
             return $this->token;
@@ -123,27 +82,29 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     {
         $this->request = $request;
         $personalAccessToken = $this->token();
-        if (!$personalAccessToken) {
+        if ($personalAccessToken === null) {
             return null;
         }
 
-        /** @var Contracts\HasApiTokens $authable */
         $authable = $this->retrieveAuthable($personalAccessToken->accessToken);
         if (!$this->supportsTokens($authable)) {
             return null;
         }
 
-        $authable->withAccessToken(
-            $personalAccessToken
-        );
+        $familyAuthable = $personalAccessToken->tokenFamily->authable;
+        if (!$familyAuthable instanceof Model || !$authable instanceof Model || !$familyAuthable->is($authable)) {
+            return null;
+        }
+
+        $authable->withAccessToken($personalAccessToken);
 
         $tokenFamily = $personalAccessToken->tokenFamily;
-
-        if (method_exists($tokenFamily->getConnection(), 'hasModifiedRecords') &&
-            method_exists($tokenFamily->getConnection(), 'setRecordModificationState')) {
+        if (
+            method_exists($tokenFamily->getConnection(), 'hasModifiedRecords')
+            && method_exists($tokenFamily->getConnection(), 'setRecordModificationState')
+        ) {
             tap($tokenFamily->getConnection()->hasModifiedRecords(), static function ($hasModifiedRecords) use ($tokenFamily) {
                 $tokenFamily->forceFill(['last_used_at' => now()])->save();
-
                 $tokenFamily->getConnection()->setRecordModificationState($hasModifiedRecords);
             });
         } else {
@@ -157,74 +118,66 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
      * @throws TokenInvalidException
      * @throws TokenExpiredException
      */
-    public function retrieveToken(Request $request): PersonalAccessToken|null
+    public function retrieveToken(Request $request): ?PersonalAccessToken
     {
         if ($accessToken = $this->getTokenFromRequest($request)) {
             $this->setToken($accessToken);
+
             return $this->token;
         }
+
         return null;
     }
 
-    /**
-     * Determine if the authable model supports API tokens.
-     *
-     * @param mixed|null $authable
-     * @return bool
-     */
     protected function supportsTokens(mixed $authable): bool
     {
-        return $authable && in_array(HasApiTokens::class, class_uses_recursive(
-            get_class($authable)
-        ), true);
+        return $authable instanceof Contracts\HasApiTokens
+            && in_array(HasApiTokensTrait::class, class_uses_recursive(get_class($authable)), true);
     }
 
     public function create(Contracts\HasApiTokens $authable): NewTokenBuilder
     {
+        $authable = $this->assertAuthableMatchesProvider($authable);
+
         return new NewTokenBuilder($authable);
     }
 
     /**
      * @throws TokenFamilyNotFoundException
-     * @throws RefreshTokenReuseException
      * @throws TokenInvalidException
      * @throws TokenExpiredException
-     * @throws FailedToDeleteTokenFamilyException
      */
     public function refresh(string $jwtToken): RefreshTokenBuilder
     {
         $token = $this->jwt->decode($jwtToken);
+        $this->assertTokenType($token, TokenBuilderBase::TOKEN_TYPE_REFRESH);
 
-        $family = $token->claims()->get('fam');
-        $sequence = (int)$token->claims()->get('seq');
+        $family = $this->requiredStringClaim($token, 'fam');
+        $sequence = $this->requiredPositiveIntegerClaim($token, 'seq');
 
         $tokenFamily = TokenFamily::findTokenFamily($family);
-        if (!$tokenFamily) {
+        if ($tokenFamily === null) {
             throw new TokenFamilyNotFoundException();
         }
-        if (!$tokenFamily->isMostRecentRefresh($sequence)) {
-            $tokenFamily->revoke();
-            $this->forget();
-            throw new RefreshTokenReuseException();
-        }
+
+        $authable = $this->assertAuthableMatchesProvider($tokenFamily->authable);
+
         if ($tokenFamily->expires_at && $tokenFamily->expires_at->isBefore(now())) {
             throw new TokenExpiredException();
         }
 
-        $authable = $tokenFamily->authable;
-        return new RefreshTokenBuilder($authable, $tokenFamily);
+        return new RefreshTokenBuilder(
+            $authable,
+            $tokenFamily,
+            $sequence,
+            fn () => $this->forget(),
+        );
     }
 
-    /**
-     * Get the token from the request.
-     *
-     * @param Request $request
-     * @return string|null
-     */
     protected function getTokenFromRequest(Request $request): ?string
     {
         if (is_callable(HyrnaticAuthenticator::$accessTokenRetrievalCallback)) {
-            return (string)(HyrnaticAuthenticator::$accessTokenRetrievalCallback)($request);
+            return (string) (HyrnaticAuthenticator::$accessTokenRetrievalCallback)($request);
         }
 
         $token = $request->bearerToken();
@@ -232,80 +185,48 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         return $this->isValidBearerToken($token) ? $token : null;
     }
 
-    /**
-     * Determine if the bearer token is in the correct format.
-     *
-     * @param string|null $token
-     * @return bool
-     */
     protected function isValidBearerToken(string $token = null): bool
     {
         return !empty($token);
     }
 
-
-    /**
-     * Determine if the authable model matches the provider's model type.
-     *
-     * @param Authenticatable $authable
-     * @return bool
-     */
-    protected function hasValidProvider(Authenticatable $authable): bool
-    {
-        $model = config("auth.providers.$this->providerName.model");
-
-        return $authable instanceof $model;
-    }
-
-    /**
-     * Determine if the provided access token is valid.
-     *
-     * @param Token $token
-     * @return Authenticatable|null
-     */
-    protected function retrieveAuthable(Token $token): ?Authenticatable
+    protected function retrieveAuthable(Token\Plain $token): ?Contracts\HasApiTokens
     {
         $subject = $token->claims()->get('sub');
         [$id, $type] = explode('|', $subject, 2);
-        $authable = $this->provider->retrieveById($id);
         $class = Relation::getMorphedModel($type) ?? $type;
+        $providerModel = $this->providerModelClass();
 
-        if (!$authable instanceof $class) {
+        if (!is_subclass_of($class, Model::class)) {
             return null;
         }
 
-        return $this->hasValidProvider($authable) ? $authable : null;
+        if ($class !== $providerModel) {
+            return null;
+        }
+
+        /** @var Model|null $authable */
+        $authable = $this->provider?->retrieveById($id);
+
+        if (!$authable instanceof $providerModel) {
+            return null;
+        }
+
+        return $authable instanceof Contracts\HasApiTokens ? $authable : null;
     }
 
-    /**
-     * Determine if the provided access token is valid.
-     *
-     * @param Plain $token
-     * @return ?TokenFamily
-     */
-    protected function retrieveTokenFamily(Token\Plain $token): ?TokenFamily
+    protected function retrieveTokenFamily(string $family): ?TokenFamily
     {
-        $family = $token->claims()->get('fam');
         return TokenFamily::findTokenFamily($family);
     }
 
-    /**
-     * Validate a user's credentials.
-     *
-     * @param array $credentials
-     * @return bool
-     */
     public function validate(array $credentials = []): bool
     {
-        return (bool)$this->provider->retrieveByCredentials($credentials);
+        $this->providerModelClass();
+
+        return (bool) $this->provider->retrieveByCredentials($credentials);
     }
 
-    /**
-     * Set the current request instance.
-     *
-     * @param Request $request
-     * @return $this
-     */
     public function setRequest(Request $request): static
     {
         $this->request = $request;
@@ -316,9 +237,9 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     /**
      * @throws Exception
      */
-    public function setUser(Authenticatable $user): void
+    public function setUser(\Illuminate\Contracts\Auth\Authenticatable $user): static
     {
-        throw new RuntimeException('It is not supported to set the user directly. Used the setToken method instead');
+        throw new RuntimeException('It is not supported to set the user directly. Use the setToken method instead.');
     }
 
     /**
@@ -330,9 +251,13 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $this->forget();
 
         $parsedToken = $this->jwt->decode($accessToken);
+        $this->assertTokenType($parsedToken, TokenBuilderBase::TOKEN_TYPE_ACCESS);
+        $family = $this->requiredStringClaim($parsedToken, 'fam');
+        $this->requiredSubjectClaim($parsedToken);
+        $scopeSnapshot = $this->requiredScopeSnapshotClaim($parsedToken);
 
-        $tokenFamily = $this->retrieveTokenFamily($parsedToken);
-        if (!$tokenFamily) {
+        $tokenFamily = $this->retrieveTokenFamily($family);
+        if ($tokenFamily === null) {
             throw new TokenInvalidException();
         }
 
@@ -340,29 +265,23 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             throw new TokenExpiredException();
         }
 
+        if ($scopeSnapshot !== $this->normalizeScopeSnapshot($tokenFamily->scopes)) {
+            throw new TokenInvalidException();
+        }
+
         $this->token = new HyrnaticAuthenticator::$personalAccessTokenModel($parsedToken, $tokenFamily);
     }
 
-    /**
-     * Logs out the user, and revokes the family
-     * @return void
-     */
     public function logout(): void
     {
         try {
-            $personalAccessToken = $this->token();
-            $personalAccessToken?->tokenFamily->revoke();
+            $this->token()?->tokenFamily->revoke();
         } catch (Exception) {
         }
 
         $this->forget();
     }
 
-    /**
-     * Forget the current user and token.
-     *
-     * @return $this
-     */
     public function forget(): static
     {
         $this->user = null;
@@ -371,47 +290,155 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         return $this;
     }
 
-
-    /**
-     * Determine if the current user is authenticated.
-     *
-     * @return bool
-     */
     public function check(): bool
     {
-        return !is_null($this->user());
+        return $this->user() !== null;
     }
 
-    /**
-     * Determine if the current user is a guest.
-     *
-     * @return bool
-     */
     public function guest(): bool
     {
         return !$this->check();
     }
 
-    /**
-     * Get the ID for the currently authenticated user.
-     *
-     * @return int|string|null
-     */
     public function id(): int|string|null
     {
-        if ($this->user()) {
-            return $this->user()->getAuthIdentifier();
-        }
-        return null;
+        return $this->user()?->getAuthIdentifier();
+    }
+
+    public function hasUser(): bool
+    {
+        return $this->user !== null;
     }
 
     /**
-     * Determine if the guard has a user instance.
-     *
-     * @return bool
+     * @return class-string<Model>
      */
-    public function hasUser(): bool
+    protected function providerModelClass(): string
     {
-        return !is_null($this->user);
+        if ($this->providerName === null) {
+            throw new InvalidGuardConfigurationException('The hyrnatic-authenticator guard requires a configured auth provider.');
+        }
+
+        if ($this->provider === null) {
+            throw new InvalidGuardConfigurationException("The auth provider [{$this->providerName}] could not be resolved.");
+        }
+
+        $model = config("auth.providers.{$this->providerName}.model");
+
+        if (!is_string($model) || !is_subclass_of($model, Model::class)) {
+            throw new InvalidGuardConfigurationException("The auth provider [{$this->providerName}] must define an Eloquent model.");
+        }
+
+        return $model;
+    }
+
+    protected function assertAuthableMatchesProvider(mixed $authable): Contracts\HasApiTokens
+    {
+        $providerModel = $this->providerModelClass();
+
+        if (!$authable instanceof Contracts\HasApiTokens || $authable::class !== $providerModel) {
+            $actualModel = is_object($authable) ? $authable::class : get_debug_type($authable);
+
+            throw new AuthableProviderMismatchException(
+                "Guard provider [{$this->providerName}] expects [{$providerModel}], [{$actualModel}] given."
+            );
+        }
+
+        return $authable;
+    }
+
+    protected function assertTokenType(Token\Plain $token, string $expectedType): void
+    {
+        if (!$token->headers()->has('typ') || $token->headers()->get('typ') !== $expectedType) {
+            throw new TokenInvalidException();
+        }
+    }
+
+    protected function requiredStringClaim(Token\Plain $token, string $name): string
+    {
+        if (!$token->claims()->has($name)) {
+            throw new TokenInvalidException();
+        }
+
+        $value = $token->claims()->get($name);
+        if (!is_string($value) || $value === '') {
+            throw new TokenInvalidException();
+        }
+
+        return $value;
+    }
+
+    protected function requiredPositiveIntegerClaim(Token\Plain $token, string $name): int
+    {
+        if (!$token->claims()->has($name)) {
+            throw new TokenInvalidException();
+        }
+
+        $value = $token->claims()->get($name);
+        if (!is_int($value) || $value < 1) {
+            throw new TokenInvalidException();
+        }
+
+        return $value;
+    }
+
+    protected function requiredSubjectClaim(Token\Plain $token): string
+    {
+        $subject = $this->requiredStringClaim($token, 'sub');
+        $parts = explode('|', $subject, 2);
+
+        if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
+            throw new TokenInvalidException();
+        }
+
+        return $subject;
+    }
+
+    /**
+     * @return list<array{key:string,resource_type:?string,resource_id:string|int|null}>
+     */
+    protected function requiredScopeSnapshotClaim(Token\Plain $token): array
+    {
+        if (!$token->claims()->has('scp')) {
+            throw new TokenInvalidException();
+        }
+
+        $scopeSnapshot = $token->claims()->get('scp');
+        if (!is_array($scopeSnapshot) || !array_is_list($scopeSnapshot)) {
+            throw new TokenInvalidException();
+        }
+
+        foreach ($scopeSnapshot as $scope) {
+            if (!is_array($scope)
+                || !isset($scope['key'])
+                || !is_string($scope['key'])
+                || $scope['key'] === ''
+                || (isset($scope['resource_type']) && !is_string($scope['resource_type']))
+                || (isset($scope['resource_id']) && !is_string($scope['resource_id']) && !is_int($scope['resource_id']))
+            ) {
+                throw new TokenInvalidException();
+            }
+
+            $hasResourceType = array_key_exists('resource_type', $scope) && $scope['resource_type'] !== null;
+            $hasResourceId = array_key_exists('resource_id', $scope) && $scope['resource_id'] !== null;
+            if ($hasResourceType !== $hasResourceId) {
+                throw new TokenInvalidException();
+            }
+        }
+
+        return $this->normalizeScopeSnapshot($scopeSnapshot);
+    }
+
+    /**
+     * @param list<array{key:string,resource_type?:string|null,resource_id?:string|int|null}> $scopeSnapshot
+     * @return list<array{key:string,resource_type:?string,resource_id:string|int|null}>
+     */
+    private function normalizeScopeSnapshot(array $scopeSnapshot): array
+    {
+        return array_map(static fn (array $scope): array => [
+            'key' => $scope['key'],
+            'resource_type' => $scope['resource_type'] ?? null,
+            'resource_id' => $scope['resource_id'] ?? null,
+        ], $scopeSnapshot);
     }
 }

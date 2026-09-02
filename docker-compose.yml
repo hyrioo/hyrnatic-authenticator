@@ -6,15 +6,20 @@ services:
         working_dir: /var/www
         volumes:
             - ./:/var/www
-        links:
-            - mysql
+        environment:
+            COMPOSER_ROOT_VERSION: dev-main
+        depends_on:
+            mysql:
+                condition: service_healthy
+            postgres:
+                condition: service_healthy
         networks:
             - app-net
         ports:
           - ${DOCKER_WS_PORT:-6001}:6001
 
     mysql:
-        image: mysql:5.7
+        image: mysql:8.0
         ports:
             - ${DOCKER_DB_PORT:-3306}:3306
         environment:
@@ -22,9 +27,27 @@ services:
             MYSQL_USER: homestead
             MYSQL_PASSWORD: secret
             MYSQL_ROOT_PASSWORD: secret
-        command: mysqld --sql_mode=""
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-psecret"]
+            interval: 5s
+            timeout: 5s
+            retries: 20
         volumes:  # Mount relative path source folder on host to absolute path destination folder on docker container
             - .docker/mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+        networks:
+            - app-net
+
+    postgres:
+        image: postgres:16-alpine
+        environment:
+            POSTGRES_DB: testing
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: secret
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U postgres -d testing"]
+            interval: 5s
+            timeout: 5s
+            retries: 20
         networks:
             - app-net
 
