@@ -9,6 +9,7 @@ use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenFamilyNotFoundException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
+use Hyrioo\HyrnaticAuthenticator\Scopes\ScopeClaim;
 use Hyrioo\HyrnaticAuthenticator\Traits\HasApiTokens as HasApiTokensTrait;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Auth\UserProvider;
@@ -155,7 +156,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $family = $this->requiredStringClaim($token, 'fam');
         $sequence = $this->requiredPositiveIntegerClaim($token, 'seq');
 
-        $tokenFamily = TokenFamily::findTokenFamily($family);
+        $tokenFamily = $this->retrieveTokenFamily($family);
         if ($tokenFamily === null) {
             throw new TokenFamilyNotFoundException();
         }
@@ -171,6 +172,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             $tokenFamily,
             $sequence,
             fn () => $this->forget(),
+            ScopeClaim::readDigest($token),
         );
     }
 
@@ -217,14 +219,23 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
 
     protected function retrieveTokenFamily(string $family): ?TokenFamily
     {
-        return TokenFamily::findTokenFamily($family);
+        /** @var class-string<TokenFamily> $model */
+        $model = HyrnaticAuthenticator::tokenFamilyModel();
+
+        return $model::findTokenFamily($family);
     }
 
     public function validate(array $credentials = []): bool
     {
         $this->providerModelClass();
 
-        return (bool) $this->provider->retrieveByCredentials($credentials);
+        if (!is_string($credentials['password'] ?? null)) {
+            return false;
+        }
+
+        $user = $this->provider->retrieveByCredentials($credentials);
+
+        return $user !== null && $this->provider->validateCredentials($user, $credentials);
     }
 
     public function setRequest(Request $request): static
@@ -254,7 +265,6 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         $this->assertTokenType($parsedToken, TokenBuilderBase::TOKEN_TYPE_ACCESS);
         $family = $this->requiredStringClaim($parsedToken, 'fam');
         $this->requiredSubjectClaim($parsedToken);
-        $scopeSnapshot = $this->requiredScopeSnapshotClaim($parsedToken);
 
         $tokenFamily = $this->retrieveTokenFamily($family);
         if ($tokenFamily === null) {
@@ -265,9 +275,7 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
             throw new TokenExpiredException();
         }
 
-        if ($scopeSnapshot !== $this->normalizeScopeSnapshot($tokenFamily->scopes)) {
-            throw new TokenInvalidException();
-        }
+        ScopeClaim::assertMatches($parsedToken, $tokenFamily->scopes);
 
         $this->token = new HyrnaticAuthenticator::$personalAccessTokenModel($parsedToken, $tokenFamily);
     }
@@ -275,11 +283,16 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
     public function logout(): void
     {
         try {
-            $this->token()?->tokenFamily->revoke();
-        } catch (Exception) {
-        }
+            try {
+                $token = $this->token();
+            } catch (TokenInvalidException | TokenExpiredException) {
+                return;
+            }
 
-        $this->forget();
+            $token?->tokenFamily->revoke();
+        } finally {
+            $this->forget();
+        }
     }
 
     public function forget(): static
@@ -392,53 +405,5 @@ class Guard implements \Illuminate\Contracts\Auth\Guard
         }
 
         return $subject;
-    }
-
-    /**
-     * @return list<array{key:string,resource_type:?string,resource_id:string|int|null}>
-     */
-    protected function requiredScopeSnapshotClaim(Token\Plain $token): array
-    {
-        if (!$token->claims()->has('scp')) {
-            throw new TokenInvalidException();
-        }
-
-        $scopeSnapshot = $token->claims()->get('scp');
-        if (!is_array($scopeSnapshot) || !array_is_list($scopeSnapshot)) {
-            throw new TokenInvalidException();
-        }
-
-        foreach ($scopeSnapshot as $scope) {
-            if (!is_array($scope)
-                || !isset($scope['key'])
-                || !is_string($scope['key'])
-                || $scope['key'] === ''
-                || (isset($scope['resource_type']) && !is_string($scope['resource_type']))
-                || (isset($scope['resource_id']) && !is_string($scope['resource_id']) && !is_int($scope['resource_id']))
-            ) {
-                throw new TokenInvalidException();
-            }
-
-            $hasResourceType = array_key_exists('resource_type', $scope) && $scope['resource_type'] !== null;
-            $hasResourceId = array_key_exists('resource_id', $scope) && $scope['resource_id'] !== null;
-            if ($hasResourceType !== $hasResourceId) {
-                throw new TokenInvalidException();
-            }
-        }
-
-        return $this->normalizeScopeSnapshot($scopeSnapshot);
-    }
-
-    /**
-     * @param list<array{key:string,resource_type?:string|null,resource_id?:string|int|null}> $scopeSnapshot
-     * @return list<array{key:string,resource_type:?string,resource_id:string|int|null}>
-     */
-    private function normalizeScopeSnapshot(array $scopeSnapshot): array
-    {
-        return array_map(static fn (array $scope): array => [
-            'key' => $scope['key'],
-            'resource_type' => $scope['resource_type'] ?? null,
-            'resource_id' => $scope['resource_id'] ?? null,
-        ], $scopeSnapshot);
     }
 }

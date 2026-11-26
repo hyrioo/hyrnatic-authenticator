@@ -125,7 +125,7 @@ $manager = \Hyrioo\HyrnaticAuthenticator\Models\Scope::create(
 );
 ```
 
-`subScopes` accepts registered code-scope classes and existing persisted scope objects. Raw scope-key strings and raw mass assignment are rejected.
+`subScopes` accepts registered code-scope classes and existing unbound persisted scope objects. Bound children are rejected to prevent silently discarding their resource restrictions; bind the parent scope with `for($resource)` instead. Raw scope-key strings and raw mass assignment are rejected.
 
 ## Token downscoping
 
@@ -138,5 +138,6 @@ $token = auth('api')->create($user)
     ->getToken();
 ```
 
-The token receives only those scopes, and they must already be allowed for the authable owner.
-If `setScopes()` is omitted, the token inherits the owner's effective scopes. Calling `setScopes([])` explicitly issues a token with no scopes.
+The requested scopes must already be allowed for the owner. Each request checks both the owner's current scopes and the token's restriction.
+
+Omit `setScopes()` to use the owner's current scopes without a token-specific limit. Calling `setScopes([])` explicitly denies all scope checks for that token.

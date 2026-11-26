@@ -151,6 +151,10 @@ class Scope extends Model implements Scopeable
                 throw new InvalidScopeException('A persisted sub scope must be saved before it can be included.');
             }
 
+            if ($scope->boundResourceType() !== null || $scope->boundResourceId() !== null) {
+                throw new InvalidScopeException('Sub scopes must be unbound. Bind the parent scope to a resource instead.');
+            }
+
             return $scope->key();
         }
 

@@ -5,11 +5,12 @@ namespace Hyrioo\HyrnaticAuthenticator\Models;
 use Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
 use Illuminate\Database\Eloquent\Model;
+use LogicException;
 
 /**
  * @property string|null $name
  * @property string $family
- * @property array $scopes
+ * @property list<array{key:string,resource_type:?string,resource_id:string|int|null}>|null $scopes
  * @property array $access_claims
  * @property array $refresh_claims
  * @property int $last_refresh_sequence
@@ -42,12 +43,24 @@ class TokenFamily extends Model
     ];
 
     /**
-     * @return list<array{key:string,resource_type:?string,resource_id:string|int|null}>
+     * @param list<array{key:string,resource_type:?string,resource_id:string|int|null}>|null $value
      */
-    public function getScopesAttribute(string $value): array
+    public function setScopesAttribute(?array $value): void
     {
-        /** @var list<array{key:string,resource_type?:string|null,resource_id?:string|int|null}> $scopes */
+        // JSON null distinguishes unrestricted families from [] in the non-nullable column.
+        $this->attributes['scopes'] = $this->castAttributeAsJson('scopes', $value);
+    }
+
+    /**
+     * @return list<array{key:string,resource_type:?string,resource_id:string|int|null}>|null
+     */
+    public function getScopesAttribute(string $value): ?array
+    {
+        /** @var list<array{key:string,resource_type?:string|null,resource_id?:string|int|null}>|null $scopes */
         $scopes = json_decode($value, true, 512, JSON_THROW_ON_ERROR);
+        if ($scopes === null) {
+            return null;
+        }
 
         return array_map(static fn (array $scope): array => [
             'key' => $scope['key'],
@@ -59,6 +72,18 @@ class TokenFamily extends Model
     public function authable()
     {
         return $this->morphTo('authable');
+    }
+
+    protected function fireModelEvent($event, $halt = true)
+    {
+        $result = parent::fireModelEvent($event, $halt);
+
+        // Check after update listeners, including when events are disabled for a quiet save.
+        if ($event === 'updating' && $result !== false && $this->isDirty('scopes')) {
+            throw new LogicException('Token family scope restrictions cannot be changed after creation.');
+        }
+
+        return $result;
     }
 
     public static function findTokenFamily(string $family)

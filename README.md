@@ -17,7 +17,11 @@ php artisan migrate
 
 `JWT_SECRET` is required and must contain at least 32 bytes. The generator writes a cryptographically random 64-character value. Do not reuse this value between applications or commit it to source control.
 
+The generator updates Laravel's configured environment file, supports quoted values, and reports failure if it cannot safely replace the file. After rotating a secret, rebuild any configuration cache and restart long-running workers.
+
 Tokens expire by default: access tokens after 15 minutes, refresh tokens after 30 days, and token families after 30 days. Override these limits with `JWT_ACCESS_EXPIRATION`, `JWT_REFRESH_EXPIRATION`, and `JWT_FAMILY_EXPIRATION`, expressed in minutes. Setting an expiration to `null` explicitly disables it and should only be done deliberately.
+
+Expiration values must be positive numbers of minutes; numeric strings from environment variables are accepted. Zero, boolean, nonnumeric, negative, and non-finite values throw `InvalidArgumentException`.
 
 ## Usage
 
@@ -156,7 +160,7 @@ $manager = \Hyrioo\HyrnaticAuthenticator\Models\Scope::create(
 $user->scope($manager->for($project));
 ```
 
-The package generates the internal key. `subScopes` accepts registered code-scope classes or existing persisted scope objects.
+The package generates the internal key. `subScopes` accepts registered code-scope classes or existing unbound persisted scope objects. Bound children are rejected; bind the parent scope with `for($resource)` instead.
 
 ## Issuing tokens
 
@@ -171,15 +175,21 @@ $token = auth('api')->create($user)
     ->getToken();
 ```
 
-If `setScopes()` is not called, the token inherits the authable model's effective scopes as a snapshot. Calling `setScopes([])` explicitly issues a token with no scopes.
+Omit `setScopes()` for a token that follows the owner's current scopes. Scope checks use the owner's assignments at request time, so grants and removals apply to existing default tokens. Call `setScopes([...])` to limit a token, such as an API key, to specific scopes. Calling `setScopes([])` explicitly denies all scope checks for that token.
+
+Default tokens omit `scp`. Restricted access and refresh tokens carry a 43-character SHA-256 digest of the restrictions stored on their token family. The guard rejects a digest that differs from the stored restrictions. Family restrictions are fixed at issuance. Revoke the old family and issue a new one to change an API key's access.
 
 Custom JWT claims cannot use registered JWT claim names or the package-owned `fam`, `scp`, and `seq` names.
 
 ## Refresh tokens
 
-Refreshing a token preserves the original token scope snapshot.
+Refreshing a token verifies the digest against the locked token family before issuing new tokens. Existing access tokens with scope lists in `scp` remain valid when those lists match the family's restrictions. Restricted families with older refresh tokens that lack a digest require reissuance.
 
 Refresh tokens are single-use. Reusing one, including through concurrent duplicate requests, revokes the entire token family.
+
+Call `refreshToken()` outside any existing database transaction on the token-family connection. It throws `RefreshTokenTransactionException` otherwise, so a caller's rollback cannot undo replay-triggered revocation. Tests that refresh tokens should use Laravel's `DatabaseMigrations` rather than the transaction-wrapping `RefreshDatabase` or `DatabaseTransactions` traits.
+
+Token creation and refresh throw `FailedToSaveTokenFamilyException` if a model event cancels persistence; no token pair is returned.
 
 ```php
 $token = auth('api')->refresh($request->refresh_token)
@@ -187,6 +197,10 @@ $token = auth('api')->refresh($request->refresh_token)
     ->setRefreshExpiresAt(now()->addMonth())
     ->refreshToken();
 ```
+
+## Logout
+
+`auth('api')->logout()` revokes the current token family and always clears the guard's cached authentication. Missing, invalid, expired, or already-revoked tokens are treated as a no-op. Failures while resolving a token other than validation errors, and all failures while revoking its family, propagate to the caller so logout is not reported as successful when revocation fails.
 
 ## Testing
 

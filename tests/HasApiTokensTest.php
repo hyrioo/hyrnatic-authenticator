@@ -142,6 +142,29 @@ class HasApiTokensTest extends TestCase
         $this->assertSame(['managed_by' => 'customer'], $parent->metadata);
     }
 
+    public function test_persisted_scopes_reject_bound_children_without_broadening_access(): void
+    {
+        $user = AuthUser::createTestUser();
+        $project = AuthProject::createTestProject();
+        $otherProject = AuthProject::createTestProject(2);
+        $reader = PersistedScope::create(
+            name: 'Project reader',
+            subScopes: [ProjectRead::class],
+            resourceType: AuthProject::class,
+        );
+        $boundReader = $reader->for($project);
+
+        $this->assertException(InvalidScopeException::class, fn () => PersistedScope::create(
+            name: 'Project group',
+            subScopes: [$boundReader],
+        ));
+
+        $this->assertDatabaseCount('scopes', 1);
+        $user->scope($boundReader);
+        $this->assertTrue($user->hasScope(ProjectRead::for($project)));
+        $this->assertFalse($user->hasScope(ProjectRead::for($otherProject)));
+    }
+
     public function test_persisted_scopes_reject_raw_sub_scope_keys()
     {
         $this->expectException(\Hyrioo\HyrnaticAuthenticator\Exceptions\InvalidScopeException::class);

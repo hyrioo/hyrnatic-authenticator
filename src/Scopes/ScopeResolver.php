@@ -49,19 +49,30 @@ class ScopeResolver
     }
 
     /**
-     * @param list<class-string<Scope>|Scopeable> $scopes
+     * @param list<class-string<Scope>|Scopeable>|null $scopes
      * @return list<array{key:string,resource_type:?string,resource_id:string|int|null}>
      */
     public function snapshot(HasApiTokens $authable, ?array $scopes = null): array
     {
-        $entries = $scopes === null
-            ? $this->effectiveModelScopes($authable)
-            : $this->expandEntries(array_map(fn ($scope) => $this->normalize($scope), $scopes));
+        if ($scopes !== null) {
+            return $this->resolveRestrictions($scopes);
+        }
 
-        return array_values(array_map(
-            fn (ScopeEntry $entry) => $entry->toArray(),
-            $this->uniqueEntries($entries),
-        ));
+        return array_map(
+            static fn (ScopeEntry $entry) => $entry->toArray(),
+            $this->uniqueEntries($this->effectiveModelScopes($authable)),
+        );
+    }
+
+    /**
+     * @param list<class-string<Scope>|Scopeable> $scopes
+     * @return list<array{key:string,resource_type:?string,resource_id:string|int|null}>
+     */
+    public function resolveRestrictions(array $scopes): array
+    {
+        $entries = $this->expandEntries(array_map($this->normalize(...), $scopes));
+
+        return array_map(static fn (ScopeEntry $entry) => $entry->toArray(), $entries);
     }
 
     /**
@@ -91,7 +102,7 @@ class ScopeResolver
             );
         }
 
-        if ($token === null) {
+        if ($token === null || !$token->hasScopeRestrictions()) {
             return Response::allow();
         }
 

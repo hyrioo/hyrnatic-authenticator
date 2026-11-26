@@ -4,19 +4,27 @@ namespace Hyrioo\HyrnaticAuthenticator\Tests;
 
 use Hyrioo\HyrnaticAuthenticator\Enums\ScopeDenialReason;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\AuthableProviderMismatchException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToDeleteTokenFamilyException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToSaveTokenFamilyException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\InvalidGuardConfigurationException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenBuilderConsumedException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenTransactionException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\ReservedTokenClaimException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\SecretMissingException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\SecretTooShortException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\ScopeEscalationException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenFamilyNotFoundException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Hyrioo\HyrnaticAuthenticator\Guard;
 use Hyrioo\HyrnaticAuthenticator\HyrnaticAuthenticator;
+use Hyrioo\HyrnaticAuthenticator\JWT;
+use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
+use Hyrioo\HyrnaticAuthenticator\Scopes\ScopeClaim;
 use Hyrioo\HyrnaticAuthenticator\Tests\Models\AuthProject;
 use Hyrioo\HyrnaticAuthenticator\Tests\Models\AuthUser;
+use Hyrioo\HyrnaticAuthenticator\Tests\Models\CustomTokenFamily;
 use Hyrioo\HyrnaticAuthenticator\Tests\Scopes\ProjectEdit;
 use Hyrioo\HyrnaticAuthenticator\Tests\Scopes\ProjectManager;
 use Hyrioo\HyrnaticAuthenticator\Tests\Scopes\ProjectRead;
@@ -24,16 +32,19 @@ use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Parser;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 class GuardTest extends TestCase
 {
-    use \Illuminate\Foundation\Testing\RefreshDatabase;
+    use \Illuminate\Foundation\Testing\DatabaseMigrations;
 
     protected function defineDatabaseMigrations()
     {
-        $this->loadMigrationsFrom(__DIR__.'/database/migrations');
+        $this->app->make('migrator')->path(__DIR__.'/database/migrations');
     }
 
     protected function getEnvironmentSetUp($app)
@@ -146,6 +157,10 @@ class GuardTest extends TestCase
         $token = $guard->create($user)
             ->setScopes([ProjectRead::for($project)])
             ->getToken();
+        $parser = new Parser(new JoseEncoder());
+        $digest = $parser->parse($token->accessToken)->claims()->get('scp');
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43}$/D', $digest);
+        $this->assertSame($digest, $parser->parse($token->refreshToken)->claims()->get('scp'));
 
         $request = Request::create('/', 'GET');
         $request->headers->set('Authorization', 'Bearer '.$token->accessToken);
@@ -162,21 +177,35 @@ class GuardTest extends TestCase
         $this->assertTrue($resolved->currentAccessToken()->hasScope(ProjectRead::for($project)));
     }
 
-    public function test_omitting_token_scopes_inherits_the_owner_scopes()
+    public function test_default_token_follows_the_owners_current_scopes()
     {
         $user = AuthUser::createTestUser();
         $user->scope(ProjectRead::class);
 
         $guard = $this->guard();
         $token = $guard->create($user)->getToken();
-        $guard->setToken($token->accessToken);
+        $parser = new Parser(new JoseEncoder());
+        $this->assertFalse($parser->parse($token->accessToken)->claims()->has('scp'));
+        $this->assertFalse($parser->parse($token->refreshToken)->claims()->has('scp'));
+        $this->assertNull($token->tokenFamily->fresh()->scopes);
 
-        /** @var AuthUser $resolved */
-        $resolved = $guard->user();
+        $request = Request::create('/', 'GET');
+        $request->headers->set('Authorization', 'Bearer '.$token->accessToken);
+        $guard->setRequest($request);
+        $this->assertTrue($guard->user()->hasScope(ProjectRead::class));
+        $this->assertFalse($guard->token()->hasScopeRestrictions());
 
-        $this->assertTrue($resolved->modelHasScope(ProjectRead::class));
-        $this->assertTrue($resolved->tokenHasScope(ProjectRead::class));
-        $this->assertTrue($resolved->hasScope(ProjectRead::class));
+        $user->unscope(ProjectRead::class);
+        $user->scope(ProjectEdit::class);
+        $guard->setRequest(clone $request);
+        $this->assertFalse($guard->user()->hasScope(ProjectRead::class));
+        $this->assertTrue($guard->user()->tokenHasScope(ProjectEdit::class));
+
+        $refreshed = $guard->refresh($token->refreshToken)->refreshToken();
+        $this->assertFalse($parser->parse($refreshed->accessToken)->claims()->has('scp'));
+        $this->assertFalse($parser->parse($refreshed->refreshToken)->claims()->has('scp'));
+        $guard->setToken($refreshed->accessToken);
+        $this->assertTrue($guard->user()->hasScope(ProjectEdit::class));
     }
 
     public function test_explicitly_empty_token_scopes_grant_no_scopes()
@@ -191,10 +220,20 @@ class GuardTest extends TestCase
         /** @var AuthUser $resolved */
         $resolved = $guard->user();
 
-        $this->assertSame([], $token->tokenFamily->scopes);
+        $parser = new Parser(new JoseEncoder());
+        $digest = $parser->parse($token->accessToken)->claims()->get('scp');
+        $this->assertSame(ScopeClaim::digest([]), $digest);
+        $this->assertSame([], $token->tokenFamily->fresh()->scopes);
+        $this->assertTrue($guard->token()->hasScopeRestrictions());
         $this->assertTrue($resolved->modelHasScope(ProjectRead::class));
         $this->assertFalse($resolved->tokenHasScope(ProjectRead::class));
         $this->assertFalse($resolved->hasScope(ProjectRead::class));
+
+        $refreshed = $guard->refresh($token->refreshToken)->refreshToken();
+        $this->assertSame($digest, $parser->parse($refreshed->accessToken)->claims()->get('scp'));
+        $this->assertSame($digest, $parser->parse($refreshed->refreshToken)->claims()->get('scp'));
+        $guard->setToken($refreshed->accessToken);
+        $this->assertFalse($guard->user()->hasScope(ProjectRead::class));
     }
 
     public function test_scope_authorization_explains_token_limits()
@@ -227,7 +266,7 @@ class GuardTest extends TestCase
         }
     }
 
-    public function test_refresh_preserves_the_original_scope_snapshot()
+    public function test_refresh_preserves_the_original_scope_restrictions()
     {
         $user = AuthUser::createTestUser();
         $project = AuthProject::createTestProject();
@@ -238,9 +277,32 @@ class GuardTest extends TestCase
             ->setScopes([ProjectManager::for($project)])
             ->getToken();
 
+        $user->unscope(ProjectManager::for($project));
         $refreshed = $guard->refresh($token->refreshToken)->refreshToken();
 
         $this->assertSame($token->tokenFamily->scopes, $refreshed->tokenFamily->scopes);
+        $parser = new Parser(new JoseEncoder());
+        $this->assertSame(
+            $parser->parse($token->accessToken)->claims()->get('scp'),
+            $parser->parse($refreshed->accessToken)->claims()->get('scp'),
+        );
+        $guard->setToken($refreshed->accessToken);
+        $this->assertFalse($guard->user()->hasScope(ProjectRead::for($project)));
+    }
+
+    public function test_scope_digest_is_order_independent_and_distinguishes_resource_bindings(): void
+    {
+        $global = ['key' => 'key$type$id', 'resource_type' => null, 'resource_id' => null];
+        $bound = ['key' => 'key', 'resource_type' => 'type', 'resource_id' => 'id'];
+        $scopes = [$global, $bound];
+        $this->assertSame(
+            ScopeClaim::digest($scopes),
+            ScopeClaim::digest(array_reverse($scopes)),
+        );
+        $this->assertNotSame(ScopeClaim::digest([$global]), ScopeClaim::digest([$bound]));
+        $differentResource = array_replace($bound, ['resource_id' => 'other-id']);
+        $this->assertNotSame(ScopeClaim::digest([$bound]), ScopeClaim::digest([$differentResource]));
+        $this->assertNotSame(ScopeClaim::digest(null), ScopeClaim::digest([]));
     }
 
     public function test_tokens_can_be_created()
@@ -281,17 +343,115 @@ class GuardTest extends TestCase
         $this->guard()->setToken($token->refreshToken);
     }
 
-    public function test_access_token_scope_snapshot_must_match_its_family()
+    public function test_access_token_can_use_matching_legacy_scope_claims(): void
+    {
+        $user = AuthUser::createTestUser();
+        $project = AuthProject::createTestProject();
+        $user->scope(ProjectRead::for($project));
+        $guard = $this->guard();
+        $token = $guard->create($user)->setScopes([ProjectRead::for($project)])->getToken();
+
+        $jwt = new JWT();
+        $builder = $jwt->create()
+            ->withHeader('typ', 'at+jwt')
+            ->relatedTo($user->getKey().'|'.$user->getMorphClass())
+            ->withClaim('fam', $token->tokenFamily->family);
+        $compactClaim = ['project.read$'.rawurlencode($project->getMorphClass()).'$'.$project->getKey()];
+
+        foreach ([$token->tokenFamily->scopes, $compactClaim] as $claim) {
+            $guard->setToken($jwt->encode($builder->withClaim('scp', $claim)));
+            $this->assertTrue($guard->user()->hasScope(ProjectRead::for($project)));
+            $this->assertSame($token->tokenFamily->scopes, $guard->token()->scopes);
+        }
+    }
+
+    public function test_token_family_scope_restrictions_cannot_be_updated(): void
+    {
+        $user = AuthUser::createTestUser();
+        $token = $this->guard()->create($user)->setScopes([])->getToken();
+        $family = $token->tokenFamily;
+        $family->scopes = null;
+
+        $this->assertException(\LogicException::class, fn () => $family->saveQuietly());
+        $this->assertSame([], $family->fresh()->scopes);
+
+        $family->refresh();
+        $family->name = 'renamed';
+        TokenFamily::updating(static function (TokenFamily $family): void {
+            $family->scopes = null;
+        });
+
+        try {
+            $this->assertException(\LogicException::class, fn () => $family->save());
+            $this->assertSame([], $family->fresh()->scopes);
+        } finally {
+            TokenFamily::flushEventListeners();
+        }
+    }
+
+    public function test_unrestricted_access_token_rejects_a_restriction_added_to_its_family(): void
     {
         $user = AuthUser::createTestUser();
         $token = $this->guard()->create($user)->getToken();
 
-        $token->tokenFamily->scopes = [['key' => '*', 'resource_type' => null, 'resource_id' => null]];
-        $token->tokenFamily->save();
+        DB::table('token_families')->where('id', $token->tokenFamily->getKey())->update(['scopes' => '[]']);
 
         $this->expectException(TokenInvalidException::class);
 
         $this->guard()->setToken($token->accessToken);
+    }
+
+    public function test_restricted_access_and_refresh_tokens_reject_family_changes(): void
+    {
+        $user = AuthUser::createTestUser();
+        $user->scope(ProjectRead::class);
+        $guard = $this->guard();
+        $token = $guard->create($user)->setScopes([ProjectRead::class])->getToken();
+        $refresh = $guard->refresh($token->refreshToken);
+
+        DB::table('token_families')->where('id', $token->tokenFamily->getKey())->update(['scopes' => 'null']);
+
+        $this->assertException(TokenInvalidException::class, fn () => $guard->setToken($token->accessToken));
+        $this->assertException(TokenInvalidException::class, fn () => $refresh->refreshToken());
+        $this->assertSame(1, $token->tokenFamily->fresh()->last_refresh_sequence);
+    }
+
+    public function test_restricted_family_requires_a_digest_on_the_refresh_token(): void
+    {
+        $user = AuthUser::createTestUser();
+        $guard = $this->guard();
+        $token = $guard->create($user)->setScopes([])->getToken();
+        $jwt = new JWT();
+        $legacyToken = $jwt->encode($jwt->create()
+            ->withHeader('typ', 'rt+jwt')
+            ->withClaim('fam', $token->tokenFamily->family)
+            ->withClaim('seq', $token->tokenFamily->last_refresh_sequence));
+
+        $this->expectException(TokenInvalidException::class);
+
+        $guard->refresh($legacyToken)->refreshToken();
+    }
+
+    public function test_restricted_family_rejects_invalid_scope_claims(): void
+    {
+        $user = AuthUser::createTestUser();
+        $user->scope(ProjectRead::class);
+        $guard = $this->guard();
+        $token = $guard->create($user)->setScopes([ProjectRead::class])->getToken();
+        $jwt = new JWT();
+        $builder = $jwt->create()
+            ->withHeader('typ', 'at+jwt')
+            ->relatedTo($user->getKey().'|'.$user->getMorphClass())
+            ->withClaim('fam', $token->tokenFamily->family);
+
+        $this->assertException(TokenInvalidException::class, fn () => $guard->setToken($jwt->encode($builder)));
+
+        foreach ([null, 'project.read', ScopeClaim::digest([]), [], ['project.read$project'], ['project.edit']] as $claim) {
+            $this->assertException(
+                TokenInvalidException::class,
+                fn () => $guard->setToken($jwt->encode($builder->withClaim('scp', $claim))),
+            );
+        }
     }
 
     public function test_tokens_can_override_configured_expirations_with_null()
@@ -506,6 +666,70 @@ class GuardTest extends TestCase
         $this->assertNull($guard->user());
     }
 
+    #[DataProvider('refreshTransactionStates')]
+    public function test_refresh_rejects_an_outer_transaction_before_changing_the_family(bool $reused): void
+    {
+        $guard = $this->guard();
+        $token = $guard->create(AuthUser::createTestUser())->getToken();
+        if ($reused) {
+            $guard->refresh($token->refreshToken)->refreshToken();
+        }
+
+        $builder = $guard->refresh($token->refreshToken);
+        $this->assertException(RefreshTokenTransactionException::class, fn () => DB::transaction(
+            fn () => $builder->refreshToken(),
+        ));
+
+        $this->assertSame(0, DB::transactionLevel());
+        $this->assertSame($reused ? 2 : 1, $token->tokenFamily->fresh()->last_refresh_sequence);
+
+        if ($reused) {
+            $this->assertException(RefreshTokenReuseException::class, fn () => $builder->refreshToken());
+            $this->assertDatabaseMissing('token_families', ['family' => $token->tokenFamily->family]);
+        } else {
+            $this->assertSame(2, $builder->refreshToken()->tokenFamily->last_refresh_sequence);
+        }
+    }
+
+    public static function refreshTransactionStates(): array
+    {
+        return [
+            'current token' => [false],
+            'reused token' => [true],
+        ];
+    }
+
+    public function test_canceled_refresh_save_throws_and_preserves_the_original_refresh_token(): void
+    {
+        $guard = $this->guard();
+        $token = $guard->create(AuthUser::createTestUser())->getToken();
+        TokenFamily::updating(fn () => false);
+
+        try {
+            $this->assertException(FailedToSaveTokenFamilyException::class, fn () => $guard->refresh($token->refreshToken)->refreshToken());
+            $this->assertSame(1, $token->tokenFamily->fresh()->last_refresh_sequence);
+        } finally {
+            TokenFamily::flushEventListeners();
+        }
+
+        $this->assertSame(2, $guard->refresh($token->refreshToken)->refreshToken()->tokenFamily->last_refresh_sequence);
+        $this->assertException(RefreshTokenReuseException::class, fn () => $guard->refresh($token->refreshToken)->refreshToken());
+        $this->assertDatabaseMissing('token_families', ['family' => $token->tokenFamily->family]);
+    }
+
+    public function test_canceled_new_family_save_does_not_return_tokens(): void
+    {
+        $user = AuthUser::createTestUser();
+        TokenFamily::creating(fn () => false);
+
+        try {
+            $this->assertException(FailedToSaveTokenFamilyException::class, fn () => $this->guard()->create($user)->getToken());
+            $this->assertDatabaseCount('token_families', 0);
+        } finally {
+            TokenFamily::flushEventListeners();
+        }
+    }
+
     public function test_refresh_sequence_is_checked_when_the_builder_is_consumed()
     {
         $user = AuthUser::createTestUser();
@@ -562,7 +786,7 @@ class GuardTest extends TestCase
         $this->guard()->create($user)->setAccessClaims(['fam' => 'overridden']);
     }
 
-    public function test_access_claims_cannot_override_the_scope_snapshot()
+    public function test_access_claims_cannot_override_the_scope_claim()
     {
         $user = AuthUser::createTestUser();
 
@@ -681,6 +905,77 @@ class GuardTest extends TestCase
         $this->assertException(TokenInvalidException::class, fn () => $guard->retrieveUser($request));
     }
 
+    #[DataProvider('logoutFailures')]
+    public function test_logout_propagates_revocation_failures_and_clears_authentication(?string $exceptionClass): void
+    {
+        $guard = $this->guard();
+        $token = $guard->create(AuthUser::createTestUser())->getToken();
+        $guard->setToken($token->accessToken);
+        $this->assertNotNull($guard->user());
+
+        TokenFamily::deleting(static function () use ($exceptionClass) {
+            if ($exceptionClass !== null) {
+                throw new $exceptionClass();
+            }
+
+            return false;
+        });
+
+        try {
+            $this->assertException($exceptionClass ?? FailedToDeleteTokenFamilyException::class, fn () => $guard->logout());
+            $this->assertFalse($guard->hasUser());
+            $this->assertFalse($guard->hasToken());
+            $this->assertDatabaseHas('token_families', ['family' => $token->tokenFamily->family]);
+        } finally {
+            TokenFamily::flushEventListeners();
+        }
+    }
+
+    public static function logoutFailures(): array
+    {
+        return [
+            'deletion vetoed' => [null],
+            'operational failure' => [\RuntimeException::class],
+            'invalid token exception during revocation' => [TokenInvalidException::class],
+            'expired token exception during revocation' => [TokenExpiredException::class],
+        ];
+    }
+
+    #[DataProvider('unauthenticatedLogoutStates')]
+    public function test_logout_without_a_valid_token_is_a_no_op(string $state): void
+    {
+        $guard = $this->guard();
+        $token = $guard->create(AuthUser::createTestUser())->getToken();
+        $request = Request::create('/', 'GET');
+
+        if ($state !== 'missing') {
+            $request->headers->set('Authorization', 'Bearer '.($state === 'malformed' ? 'invalid' : $token->accessToken));
+        }
+
+        if ($state === 'expired') {
+            $this->travel(16)->minutes();
+        } elseif ($state === 'revoked') {
+            $token->tokenFamily->revoke();
+        }
+
+        $guard->setRequest($request);
+        $guard->logout();
+
+        $this->assertFalse($guard->hasUser());
+        $this->assertFalse($guard->hasToken());
+        $this->assertDatabaseCount('token_families', $state === 'revoked' ? 0 : 1);
+    }
+
+    public static function unauthenticatedLogoutStates(): array
+    {
+        return [
+            'missing' => ['missing'],
+            'malformed' => ['malformed'],
+            'expired' => ['expired'],
+            'revoked' => ['revoked'],
+        ];
+    }
+
     public function test_guard_can_set_token()
     {
         $user = AuthUser::createTestUser();
@@ -692,6 +987,129 @@ class GuardTest extends TestCase
         $guard->setToken($token->accessToken);
 
         $this->assertNotNull($guard->user());
+    }
+
+    public function test_validate_checks_the_password_without_authenticating(): void
+    {
+        $user = AuthUser::createTestUser();
+        $user->password = Hash::make('correct-password');
+        $user->save();
+        $guard = $this->guard();
+
+        $this->assertFalse($guard->validate(['email' => $user->email, 'password' => 'wrong-password']));
+        $this->assertFalse($guard->validate(['email' => $user->email]));
+        $this->assertFalse($guard->validate(['email' => $user->email, 'password' => null]));
+        $this->assertFalse($guard->validate(['email' => 'missing@example.com', 'password' => 'correct-password']));
+        $this->assertFalse($guard->validate([]));
+        $this->assertTrue($guard->validate(['email' => $user->email, 'password' => 'correct-password']));
+        $this->assertFalse($guard->hasUser());
+        $this->assertFalse($guard->hasToken());
+    }
+
+    public function test_custom_token_family_model_is_used_throughout_the_token_lifecycle(): void
+    {
+        $originalModel = HyrnaticAuthenticator::tokenFamilyModel();
+        HyrnaticAuthenticator::useTokenFamilyModel(CustomTokenFamily::class);
+
+        try {
+            $user = AuthUser::createTestUser();
+            $guard = $this->guard();
+            $token = $guard->create($user)->setName('visible')->getToken();
+
+            $this->assertInstanceOf(CustomTokenFamily::class, $token->tokenFamily);
+            $this->assertInstanceOf(CustomTokenFamily::class, $user->tokenFamilies()->sole());
+
+            $guard->setToken($token->accessToken);
+            $this->assertSame($user->id, $guard->id());
+            $this->assertInstanceOf(CustomTokenFamily::class, $guard->token()->tokenFamily);
+
+            $refreshed = $guard->refresh($token->refreshToken)->refreshToken();
+            $this->assertInstanceOf(CustomTokenFamily::class, $refreshed->tokenFamily);
+            $this->assertSame(2, $refreshed->tokenFamily->last_refresh_sequence);
+
+            $guard->setToken($refreshed->accessToken);
+            $guard->logout();
+            $this->assertDatabaseMissing('token_families', ['family' => $token->tokenFamily->family]);
+        } finally {
+            HyrnaticAuthenticator::useTokenFamilyModel($originalModel);
+        }
+    }
+
+    public function test_custom_token_family_scopes_apply_to_authentication_and_refresh(): void
+    {
+        $originalModel = HyrnaticAuthenticator::tokenFamilyModel();
+        HyrnaticAuthenticator::useTokenFamilyModel(CustomTokenFamily::class);
+
+        try {
+            $guard = $this->guard();
+            $token = $guard->create(AuthUser::createTestUser())->setName('hidden')->getToken();
+
+            $this->assertDatabaseHas('token_families', ['family' => $token->tokenFamily->family]);
+            $this->assertException(TokenInvalidException::class, fn () => $guard->setToken($token->accessToken));
+            $this->assertException(TokenFamilyNotFoundException::class, fn () => $guard->refresh($token->refreshToken));
+        } finally {
+            HyrnaticAuthenticator::useTokenFamilyModel($originalModel);
+        }
+    }
+
+    #[DataProvider('expirationSettings')]
+    public function test_configured_expiration_values(mixed $minutes, bool $valid): void
+    {
+        $user = AuthUser::createTestUser();
+        $parser = new Parser(new JoseEncoder());
+        $this->travelTo(now()->startOfSecond());
+
+        foreach (['access', 'refresh', 'family'] as $kind) {
+            $configKey = "hyrnatic-authenticator.{$kind}_expiration";
+            $originalValue = config($configKey);
+            config([$configKey => $minutes]);
+
+            try {
+                if (!$valid) {
+                    $this->assertException(\InvalidArgumentException::class, fn () => $this->guard()->create($user));
+                    $this->assertDatabaseCount('token_families', 0);
+                    continue;
+                }
+
+                $token = $this->guard()->create($user)->getToken();
+                $expiresAt = match ($kind) {
+                    'access' => $parser->parse($token->accessToken)->claims()->get('exp'),
+                    'refresh' => $parser->parse($token->refreshToken)->claims()->get('exp'),
+                    'family' => $token->tokenFamily->fresh()->expires_at,
+                };
+
+                if ($minutes === null) {
+                    $this->assertNull($expiresAt);
+                } else {
+                    $this->assertSame(now()->addMinutes((float) $minutes)->getTimestamp(), $expiresAt->getTimestamp());
+                }
+            } finally {
+                config([$configKey => $originalValue]);
+            }
+        }
+    }
+
+    public static function expirationSettings(): array
+    {
+        return [
+            'null disables expiry' => [null, true],
+            'integer zero' => [0, false],
+            'string zero' => ['0', false],
+            'float zero' => [0.0, false],
+            'string decimal zero' => ['0.0', false],
+            'integer minutes' => [15, true],
+            'string minutes' => ['15', true],
+            'fractional minutes' => [0.5, true],
+            'string fractional minutes' => ['0.5', true],
+            'false' => [false, false],
+            'true' => [true, false],
+            'empty string' => ['', false],
+            'nonnumeric string' => ['invalid', false],
+            'negative minutes' => [-1, false],
+            'negative string minutes' => ['-1', false],
+            'infinity' => [INF, false],
+            'not a number' => [NAN, false],
+        ];
     }
 
     private function guard(string $name = 'api'): Guard

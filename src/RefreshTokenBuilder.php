@@ -4,12 +4,15 @@ namespace Hyrioo\HyrnaticAuthenticator;
 
 use Closure;
 use Hyrioo\HyrnaticAuthenticator\Contracts\HasApiTokens;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToSaveTokenFamilyException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenBuilderConsumedException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenReuseException;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\RefreshTokenTransactionException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenExpiredException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenFamilyNotFoundException;
 use Hyrioo\HyrnaticAuthenticator\Exceptions\TokenInvalidException;
 use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
+use Hyrioo\HyrnaticAuthenticator\Scopes\ScopeClaim;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Date;
 
@@ -28,6 +31,7 @@ class RefreshTokenBuilder extends TokenBuilderBase
         TokenFamily $tokenFamily,
         int $expectedSequence,
         ?Closure $onReuse = null,
+        private readonly ?string $scopeDigest = null,
     )
     {
         parent::__construct($model);
@@ -44,9 +48,13 @@ class RefreshTokenBuilder extends TokenBuilderBase
             throw new RefreshTokenBuilderConsumedException('A refresh token builder may only be consumed once.');
         }
 
+        $connection = $this->tokenFamily->getConnection();
+        if ($connection->transactionLevel() > 0) {
+            throw new RefreshTokenTransactionException('Refresh tokens must be consumed outside an existing database transaction.');
+        }
+
         $this->consumed = true;
         $reuseDetected = false;
-        $connection = $this->tokenFamily->getConnection();
         $tokenFamilyClass = $this->tokenFamily::class;
         $tokenFamilyId = $this->tokenFamily->getKey();
 
@@ -91,6 +99,8 @@ class RefreshTokenBuilder extends TokenBuilderBase
                 throw new TokenInvalidException();
             }
 
+            ScopeClaim::assertDigestMatches($this->scopeDigest, $lockedFamily->scopes);
+
             $this->model = $authable;
             $this->tokenFamily = $lockedFamily;
             $this->accessClaims = $lockedFamily->access_claims;
@@ -108,11 +118,13 @@ class RefreshTokenBuilder extends TokenBuilderBase
             $accessToken = $this->createAccessToken(
                 $family,
                 self::getAccessTokenExpiration($this->accessExpiresAt),
-                $lockedFamily->scopes,
+                $this->scopeDigest,
             );
-            $refreshToken = $this->createRefreshToken($family, $newSequence, $refreshExpiresAt);
+            $refreshToken = $this->createRefreshToken($family, $newSequence, $refreshExpiresAt, $this->scopeDigest);
 
-            $lockedFamily->save();
+            if (!$lockedFamily->save()) {
+                throw new FailedToSaveTokenFamilyException('The refreshed token family could not be saved.');
+            }
 
             return new NewToken($lockedFamily, $accessToken, $refreshToken);
         }, 3);

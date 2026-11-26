@@ -4,8 +4,10 @@ namespace Hyrioo\HyrnaticAuthenticator;
 
 use Carbon\CarbonInterface;
 use Hyrioo\HyrnaticAuthenticator\Contracts\Scopeable;
+use Hyrioo\HyrnaticAuthenticator\Exceptions\FailedToSaveTokenFamilyException;
 use Hyrioo\HyrnaticAuthenticator\Models\TokenFamily;
 use Hyrioo\HyrnaticAuthenticator\Scopes\Scope;
+use Hyrioo\HyrnaticAuthenticator\Scopes\ScopeClaim;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
 
@@ -63,15 +65,20 @@ class NewTokenBuilder extends TokenBuilderBase
 
     public function getToken(): NewToken
     {
-        $this->scopeResolver->assertScopesCanBeIssued($this->model, $this->scopes ?? []);
+        $scopeRestrictions = null;
+        if ($this->scopes !== null) {
+            $this->scopeResolver->assertScopesCanBeIssued($this->model, $this->scopes);
+            $scopeRestrictions = $this->scopeResolver->resolveRestrictions($this->scopes);
+        }
 
         $family = Str::random(48);
-        $scopeSnapshot = $this->getScopeSnapshot();
 
-        $tokenFamily = new TokenFamily();
+        /** @var class-string<TokenFamily> $tokenFamilyClass */
+        $tokenFamilyClass = HyrnaticAuthenticator::tokenFamilyModel();
+        $tokenFamily = new $tokenFamilyClass();
         $tokenFamily->name = $this->name;
         $tokenFamily->family = $family;
-        $tokenFamily->scopes = $scopeSnapshot;
+        $tokenFamily->scopes = $scopeRestrictions;
         $tokenFamily->access_claims = $this->accessClaims;
         $tokenFamily->refresh_claims = $this->refreshClaims;
         $familyExpiresAt = self::getFamilyTokenExpiration($this->familyExpiresAt);
@@ -83,14 +90,22 @@ class NewTokenBuilder extends TokenBuilderBase
             self::getPruneAt(Date::make($familyExpiresAt), Date::make($refreshExpiresAt)),
         );
 
+        $scopeDigest = ScopeClaim::digest($scopeRestrictions);
         $accessToken = $this->createAccessToken(
             $family,
             self::getAccessTokenExpiration($this->accessExpiresAt),
-            $scopeSnapshot,
+            $scopeDigest,
         );
-        $refreshToken = $this->createRefreshToken($family, $tokenFamily->last_refresh_sequence, $refreshExpiresAt);
+        $refreshToken = $this->createRefreshToken(
+            $family,
+            $tokenFamily->last_refresh_sequence,
+            $refreshExpiresAt,
+            $scopeDigest,
+        );
 
-        $this->model->tokenFamilies()->save($tokenFamily);
+        if ($this->model->tokenFamilies()->save($tokenFamily) === false) {
+            throw new FailedToSaveTokenFamilyException('The new token family could not be saved.');
+        }
 
         return new NewToken($tokenFamily, $accessToken, $refreshToken);
     }

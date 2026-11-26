@@ -77,7 +77,17 @@ class TokenBuilderBase
     {
         $minutes = config("hyrnatic-authenticator.{$key}_expiration");
 
-        return $minutes ? now()->addMinutes($minutes) : null;
+        if ($minutes === null) {
+            return null;
+        }
+
+        if (!is_numeric($minutes) || !is_finite((float) $minutes) || $minutes <= 0) {
+            throw new \InvalidArgumentException(
+                "The hyrnatic-authenticator.{$key}_expiration setting must be a positive number of minutes or null."
+            );
+        }
+
+        return now()->addMinutes((float) $minutes);
     }
 
     protected static function getTokenExpiration(CarbonInterface $expiresAt = null): ?DateTimeImmutable
@@ -121,13 +131,10 @@ class TokenBuilderBase
         return $refreshExpiresAt->toImmutable();
     }
 
-    /**
-     * @param list<array{key:string,resource_type:?string,resource_id:string|int|null}> $scopeSnapshot
-     */
     protected function createAccessToken(
         string $family,
         ?DateTimeImmutable $expiresAt,
-        array $scopeSnapshot,
+        ?string $scopeDigest,
     ): string {
         $this->assertClaimsAreNotReserved($this->accessClaims);
 
@@ -136,8 +143,11 @@ class TokenBuilderBase
             ->withHeader('typ', self::TOKEN_TYPE_ACCESS)
             ->issuedAt(now()->toImmutable())
             ->relatedTo($subject)
-            ->withClaim('fam', $family)
-            ->withClaim('scp', $scopeSnapshot);
+            ->withClaim('fam', $family);
+
+        if ($scopeDigest !== null) {
+            $tokenBuilder = $tokenBuilder->withClaim('scp', $scopeDigest);
+        }
 
         foreach ($this->accessClaims as $name => $claim) {
             $tokenBuilder = $tokenBuilder->withClaim($name, $claim);
@@ -150,8 +160,12 @@ class TokenBuilderBase
         return $this->jwt->encode($tokenBuilder);
     }
 
-    protected function createRefreshToken(string $family, int $sequence, ?DateTimeImmutable $expiresAt): string
-    {
+    protected function createRefreshToken(
+        string $family,
+        int $sequence,
+        ?DateTimeImmutable $expiresAt,
+        ?string $scopeDigest,
+    ): string {
         $this->assertClaimsAreNotReserved($this->refreshClaims);
 
         $tokenBuilder = $this->jwt->create()
@@ -159,6 +173,10 @@ class TokenBuilderBase
             ->issuedAt(now()->toImmutable())
             ->withClaim('fam', $family)
             ->withClaim('seq', $sequence);
+
+        if ($scopeDigest !== null) {
+            $tokenBuilder = $tokenBuilder->withClaim('scp', $scopeDigest);
+        }
 
         foreach ($this->refreshClaims as $name => $claim) {
             $tokenBuilder = $tokenBuilder->withClaim($name, $claim);
@@ -169,14 +187,6 @@ class TokenBuilderBase
         }
 
         return $this->jwt->encode($tokenBuilder);
-    }
-
-    /**
-     * @return list<array{key:string,resource_type:?string,resource_id:string|int|null}>
-     */
-    protected function getScopeSnapshot(): array
-    {
-        return $this->scopeResolver->snapshot($this->model, $this->scopes);
     }
 
     protected function assertClaimsAreNotReserved(array $claims): void

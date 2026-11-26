@@ -17,7 +17,7 @@ use function Orchestra\Testbench\artisan;
 
 class PruneExpiredTest extends TestCase
 {
-    use \Illuminate\Foundation\Testing\RefreshDatabase;
+    use \Illuminate\Foundation\Testing\DatabaseMigrations;
 
     /**
      * Define database migrations.
@@ -26,7 +26,7 @@ class PruneExpiredTest extends TestCase
      */
     protected function defineDatabaseMigrations()
     {
-        $this->loadMigrationsFrom(__DIR__ . '/database/migrations');
+        $this->app->make('migrator')->path(__DIR__.'/database/migrations');
     }
 
     protected function getPackageProviders($app)

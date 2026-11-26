@@ -24,7 +24,12 @@ class PersonalAccessToken
     {
         $this->accessToken = $accessToken;
         $this->tokenFamily = $tokenFamily;
-        $this->scopes = $this->accessToken->claims()->get('scp');
+        $this->scopes = $tokenFamily->scopes ?? [];
+    }
+
+    public function hasScopeRestrictions(): bool
+    {
+        return $this->accessToken->claims()->has('scp');
     }
 
     /**
